@@ -1,67 +1,55 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>帽子屋flavaシフト管理</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>帽子屋flavaシフト管理</title>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<style>
-body{
-font-family:sans-serif;
-background:#f5f5f5;
-margin:0;
-padding:20px;
-}
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 20px;
+    }
 
-h1{
-text-align:center;
-}
+    h1 {
+      text-align: center;
+    }
 
-.card{
-background:white;
-padding:15px;
-border-radius:10px;
-margin-bottom:15px;
-}
+    .card {
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+    }
 
-input,button{
-padding:10px;
-margin:5px 0;
-width:100%;
-}
+    input, button {
+      padding: 10px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
 
-button{
-background:#00b894;
-color:white;
-border:none;
-border-radius:5px;
-}
-</style>
+    button {
+      background: #00b894;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+
+    #list div {
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+  </style>
 </head>
-
 <body>
 
-<h1>帽子屋flavaシフト管理</h1>
+  <h1>帽子屋flavaシフト管理</h1>
 
-<div class="card">
-<h2>従業員登録</h2>
-<input id="name" placeholder="名前">
-<input id="email" placeholder="メール">
-<button onclick="addEmployee()async function addEmployee() {
-
-const name = document.getElementById("name").value
-const email = document.getElementById("email").value
-
-const { error } = await supabase
-.from("employees")
-.insert([{ name: name, email: email }])
-
-if (error) {
-alert("登録失敗: " + error.message)
-return
-}
-
-alert("登録成功！")
-  }
+  <div class="card">
+    <h2>従業員登録</h2>
+    <input id="
