@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>帽子屋 Flava｜シフト管理</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0D1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="帽子屋Flava">
+  <link rel="apple-touch-icon" href="icon.png">
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const { createClient } = supabase;
+    const db = createClient("https://njfczsystzfcqfcnmtkq.supabase.co", "sb_publishable_bLly_Xbs0DqycEmiUS259w_ZVS6EZUb");
+
+    // 従業員UUIDをキャッシュ
+    window._empUUIDs = {};
+
+    // 起動時に従業員データ読み込み
+    db.from('employees').select('id, name').then(function(res) {
+      if (res.data) {
+        res.data.forEach(function(e, i) {
+          window._empUUIDs[i + 1] = e.id;
+        });
+        console.log('Employees loaded:', window._empUUIDs);
+      }
+    });
+
+    // 打刻データを読み込む
+    window.loadAttendance = function(year, month, callback) {
+      var startDate = year + '-' + String(month+1).padStart(2,'0') + '-01';
+      var endDate   = year + '-' + String(month+1).padStart(2,'0') + '-31';
+      db.from('attendance').select('*')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .then(function(res) {
+          if (res.data) callback(res.data);
+        });
+    };
+
+    // 打刻を保存
+    window.saveRecord = function(empId, day, month, year, rec) {
+      var empUUID = window._empUUIDs[empId];
+      if (!empUUID) return;
+      var date = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+      var payload = {
+        employee_id: empUUID,
+        date: date,
+        time_in:     rec.in  ? (rec.in.time  || rec.in)  : null,
+        time_out:    rec.out ? (rec.out.time || rec.out) : null,
+        break_start: rec.bs  ? (rec.bs.time  || rec.bs)  : null,
+        break_end:   rec.be  ? (rec.be.time  || rec.be)  : null,
+        break_type:  rec.breakType || null,
+        status:      rec.status   || '',
+        memo:        rec.memo     || '',
+        register:    rec.register || false,
+        confirmed:   rec.confirmed|| false,
+        loc_in:      rec.in ? (rec.in.loc || '') : '',
+      };
+      db.from('attendance').upsert(payload, {onConflict: 'employee_id,date'}).then(function(res) {
+        if (res.error) console.log('save error:', res.error.message);
+        else console.log('saved:', date);
+      });
+    };
+  </script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0D1117;color:#E6EDF3;font-family:'Hiragino Kaku Gothic ProN',sans-serif;min-height:100vh}
+    button{cursor:pointer;font-family:inherit}
+    textarea,input{outline:none;font-family:inherit}
+  </style>
+</head>
+<body>
+<div id="root">
+  <div style="text-align:center;padding:60px 20px;color:#58A6FF">
+    <div style="font-size:28px;margin-bottom:12px">🎩 帽子屋 Flava</div>
+    <div style="color:#6E7681;font-size:14px">読み込み中...</div>
+  </div>
+</div>
+<script>
+window.addEventListener('error', function(e){
+  document.getElementById('root').innerHTML =
+    '<div style="color:#F85149;padding:24px;font-size:14px"><b>エラー:</b> ' + e.message + '<br>行: ' + e.lineno + '</div>';
+});
+</script>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect } = React;
+
+// ═══════════════════════════════════════
+// 定数
+// ═══════════════════════════════════════
+const EMPLOYEES = [
+  { id: 1, name: "渡邊 なつき", type: "社員",   hours: 8 },
+  { id: 2, name: "小河 滝子",   type: "社員",   hours: 8 },
+  { id: 3, name: "速水 千夢",   type: "バイト", hours: 5 },
+  { id: 4, name: "長澤 瑠奈",   type: "バイト", hours: 5 },
+  { id: 5, name: "鈴木 天空",   type: "バイト", hours: 5 },
+  { id: 6, name: "廣田 和希",   type: "バイト", hours: 5 },
+];
+
+const SHIFT_DEF = {
+  "早番": { symbol:"A", time:"07:00〜15:00", start:"07:00", end:"15:00", color:"#D97706", bg:"#FFFBEB", border:"#FCD34D" },
+  "遅番": { symbol:"B", time:"14:00〜22:00", start:"14:00", end:"22:00", color:"#1D4ED8", bg:"#EFF6FF", border:"#93C5FD" },
+  "中番": { symbol:"N", time:"10:00〜18:00", start:"10:00", end:"18:00", color:"#15803D", bg:"#F0FDF4", border:"#86EFAC" },
+  "夜勤": { symbol:"N", time:"22:00〜07:00", start:"22:00", end:"07:00", color:"#7C3AED", bg:"#F5F3FF", border:"#C4B5FD" },
+  "休み": { symbol:"◎", time:"－",           start:"",      end:"",      color:"#6B7280", bg:"#F9FAFB", border:"#E5E7EB" },
+};
+const SHIFT_TYPES = ["早番","遅番","中番","夜勤","休み"];
+const WISH_OPTIONS = ["早番","遅番","中番","休み"];
+
+const STATUS_LIST = [
+  { key:"",       label:"通常",     color:"#94A3B8", border:"#30363D" },
+  { key:"有給",   label:"有給",     color:"#34D399", border:"#34D399" },
+  { key:"欠勤",   label:"欠勤",     color:"#F85149", border:"#F85149" },
+  { key:"休日出勤", label:"休日出勤", color:"#A78BFA", border:"#A78BFA" },
+];
+
+const BREAK_OPTIONS = [
+  { key:"0",  label:"休憩なし", min:0  },
+  { key:"45", label:"0:45",    min:45 },
+  { key:"60", label:"1:00",    min:60 },
+];
+
+const MANAGER_PW = "1234";
+
+const NOW   = new Date();
+const YEAR  = NOW.getFullYear();
+const MONTH = NOW.getMonth();
+const TODAY = NOW.getDate();
+
+const C = {
+  bg:"#0D1117", panel:"#161B22", card:"#1C2128",
+  border:"#30363D", text:"#E6EDF3", dim:"#6E7681",
+  accent:"#58A6FF", green:"#3FB950", red:"#F85149",
+  yellow:"#D29922", purple:"#BC8CFF", orange:"#F0883E",
+};
+
+// ═══════════════════════════════════════
+// ユーティリティ
+// ═══════════════════════════════════════
+function getSym(t) { return (SHIFT_DEF[t]&&SHIFT_DEF[t].symbol)||t; }
+function getDim(y,m) { return new Date(y,m+1,0).getDate(); }
+function getDayName(y,m,d) { return ["日","月","火","水","木","金","土"][new Date(y,m,d).getDay()]; }
+function getIsWE(y,m,d) { return new Date(y,m,d).getDay()===0; }
+function getIsToday(y,m,d) { return y===YEAR&&m===MONTH&&d===TODAY; }
+function entryTime(e) { if(!e) return ""; if(typeof e==="string") return e; return e.time||""; }
+function entryEdited(e) { return e&&e.edited; }
+function entryLoc(e) { return e?e.loc:""; }
+function pad2(n) { return String(n).padStart(2,"0"); }
+function toHHMM(h,m) { if(m>=60){h+=Math.floor(m/60);m=m%60;} if(m<0){h-=1;m=60+m;} return pad2(h%24)+":"+pad2(m); }
+function makeEntry(time,loc) { return {time:time,loc:loc||"",edited:false,editLog:[]}; }
+
+function calcNet(a,b,c,d) {
+  function p(t) { if(!t) return null; var s=t.split(":"); return parseInt(s[0])*60+parseInt(s[1]); }
+  var i=p(a),o=p(b);
+  if(i===null||o===null) return null;
+  var w=o>=i?o-i:1440-i+o;
+  var bs=p(c),be=p(d);
+  if(bs!==null&&be!==null) w-=(be>=bs?be-bs:1440-bs+be);
+  return Math.max(0,w);
+}
+function fmtMin(m) { if(m===null||m===undefined) return "－"; return Math.floor(m/60)+"h"+String(m%60).padStart(2,"0")+"m"; }
+function fmtOT(m) { if(!m||m<=0) return "－"; return Math.floor(m/60)+":"+String(m%60).padStart(2,"0"); }
+function fmtNow() { return new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}); }
+function calcOvertime(n) { if(n===null) return 0; return Math.max(0,n-480); }
+
+function buildPeriodDays(py,pm) {
+  var ny=pm===11?py+1:py, nm=pm===11?0:pm+1, list=[];
+  for(var d=16;d<=getDim(py,pm);d++) list.push({y:py,m:pm,d:d});
+  for(var d2=1;d2<=15;d2++) list.push({y:ny,m:nm,d:d2});
+  return list;
+}
+
+function initWishes() {
+  var data={};
+  EMPLOYEES.forEach(function(e) {
+    data[e.id]={};
+    // 今月と来月分を初期化
+    for(var mo=0;mo<=1;mo++){
+      var y=MONTH+mo>11?YEAR+1:YEAR;
+      var m=MONTH+mo>11?0:MONTH+mo;
+      var key=y+"-"+m;
+      data[e.id][key]={};
+      for(var d=1;d<=getDim(y,m);d++) data[e.id][key][d]={shift:new Date(y,m,d).getDay()===0?"休み":"早番",note:""};
+    }
+  });
+  return data;
+}
+function initShifts() {
+  var data={};
+  EMPLOYEES.forEach(function(e) {
+    data[e.id]={};
+    for(var d=1;d<=getDim(YEAR,MONTH);d++) data[e.id][d]=null;
+  });
+  return data;
+}
+function initAtt() {
+  var data={};
+  EMPLOYEES.forEach(function(e) {
+    data[e.id]={};
+    for(var d=1;d<=getDim(YEAR,MONTH);d++) {
+      data[e.id][d]={in:null,out:null,bs:null,be:null,status:"",memo:""};
+    }
+  });
+  return data;
+}
+
+// ═══════════════════════════════════════
+// コンポーネント
+// ═══════════════════════════════════════
+function ShiftBadge(props) {
+  var t=props.type, sz=props.size||24, def=SHIFT_DEF[t]||{};
+  return (
+    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:sz,height:sz,borderRadius:5,border:"1px solid "+(def.border||"#444"),color:def.color||"#aaa",fontSize:Math.floor(sz*0.55),fontWeight:900,flexShrink:0}}>
+      {getSym(t)}
+    </span>
+  );
+}
+
+function LiveClock(props) {
+  var s=props.style||{fontFamily:"monospace",fontSize:12,color:C.dim};
+  var st=useState(new Date());
+  useEffect(function(){var id=setInterval(function(){st[1](new Date());},1000);return function(){clearInterval(id);};},[]);
+  return <span style={s}>{st[0].toLocaleTimeString("ja-JP")}</span>;
+}
+
+function getLocation(cb) {
+  if(!navigator.geolocation){cb("位置情報非対応");return;}
+  navigator.geolocation.getCurrentPosition(
+    function(pos){
+      var lat=pos.coords.latitude,lng=pos.coords.longitude;
+      fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat="+lat+"&lon="+lng+"&accept-language=ja")
+        .then(function(r){return r.json();})
+        .then(function(d){var a=d.address||{};cb((a.city||a.town||a.village||"")+(a.suburb||a.neighbourhood||"")||"位置取得済");})
+        .catch(function(){cb("緯度"+lat.toFixed(3)+" 経度"+lng.toFixed(3));});
+    },
+    function(){cb("位置情報拒否");}
+  );
+}
+
+// ═══════════════════════════════════════
+// メインアプリ
+// ═══════════════════════════════════════
+// ── 独立モーダル: 希望備考入力 ──────────────────
+function WishNoteModal(props) {
+  var day=props.day, empId=props.empId, initialNote=props.initialNote;
+  var noteS=useState(initialNote||""); var note=noteS[0]; var setNote=noteS[1];
+  function handleClose(){props.onSave(note);props.onClose();}
+  return(
+    <>
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:99}} onClick={handleClose}/>
+      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:"#1C2128",border:"1px solid #58A6FF44",borderRadius:14,padding:28,zIndex:100,width:340,maxWidth:"90vw"}}>
+        <div style={{fontWeight:800,fontSize:15,color:"#58A6FF",marginBottom:12}}>{props.monthLabel}月{day}日の希望備考</div>
+        <div style={{fontSize:10,color:"#6E7681",marginBottom:6}}>希望シフト</div>
+        <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+          {props.wishOptions.map(function(opt){
+            var active=props.currentShift===opt;
+            var def=props.shiftDef[opt]||{};
+            return(<button key={opt} onClick={function(){props.onShiftChange(opt);}} style={{padding:"7px 14px",borderRadius:8,border:"2px solid "+(active?def.border:"#30363D"),background:active?def.border+"22":"transparent",color:active?def.color:"#6E7681",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:active?700:400}}>{props.getSym(opt)} {opt}</button>);
+          })}
+        </div>
+        <div style={{fontSize:10,color:"#6E7681",marginBottom:5}}>備考・時間の条件など</div>
+        <textarea
+          value={note}
+          rows={3}
+          placeholder="例: 14:00までしか出れない"
+          onChange={function(e){setNote(e.target.value);}}
+          style={{background:"#161B22",border:"1px solid #30363D",borderRadius:6,padding:"8px 10px",color:"#E6EDF3",fontFamily:"inherit",fontSize:13,width:"100%",boxSizing:"border-box",resize:"vertical",lineHeight:1.7}}
+        />
+        <button onClick={handleClose} style={{width:"100%",padding:"11px 0",borderRadius:8,border:"none",cursor:"pointer",background:"#58A6FF",color:"#0D1117",fontFamily:"inherit",fontSize:14,fontWeight:800,marginTop:14}}>OK</button>
+      </div>
+    </>
+  );
+}
+
+// ── 独立モーダル: 店長パスワード ──────────────────
+function PasswordModal(props) {
+  var pwS=useState(""); var pw=pwS[0]; var setPw=pwS[1];
+  var errS=useState(false); var err=errS[0]; var setErr=errS[1];
+  function tryLogin(){
+    if(pw===props.managerPw){props.onSuccess();setPw("");}
+    else{setErr(true);}
+  }
+  if(!props.show) return null;
+  return(
+    <>
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:199}} onClick={props.onClose}/>
+      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:"#1C2128",border:"1px solid #F0883E66",borderRadius:20,padding:48,width:320,maxWidth:"90vw",textAlign:"center",zIndex:200}}>
+        <div style={{fontSize:42,marginBottom:12}}>👑</div>
+        <div style={{fontWeight:900,fontSize:20,color:"#F0883E",marginBottom:4,letterSpacing:2}}>店長ログイン</div>
+        <div style={{fontSize:12,color:"#6E7681",marginBottom:24}}>パスワードを入力してください</div>
+        <input
+          type="password"
+          value={pw}
+          placeholder="パスワード"
+          autoFocus
+          onKeyDown={function(e){if(e.key==="Enter") tryLogin();}}
+          onChange={function(e){setPw(e.target.value);setErr(false);}}
+          style={{background:"#161B22",border:"2px solid "+(err?"#F85149":"#30363D"),borderRadius:8,padding:"12px 16px",color:"#E6EDF3",fontFamily:"inherit",fontSize:18,width:"100%",boxSizing:"border-box",textAlign:"center",letterSpacing:6,marginBottom:8}}
+        />
+        {err&&<div style={{color:"#F85149",fontSize:12,marginBottom:8}}>パスワードが違います</div>}
+        <button onClick={tryLogin} style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",cursor:"pointer",background:"#F0883E",color:"#0D1117",fontFamily:"inherit",fontSize:15,fontWeight:800,marginTop:8}}>ログイン</button>
+        <button onClick={props.onClose} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"none",cursor:"pointer",background:"transparent",color:"#6E7681",fontFamily:"inherit",fontSize:13,marginTop:8}}>キャンセル</button>
+      </div>
+    </>
+  );
+}
+
+function App() {
+  // ── 認証 ──
+  var isManagerS=useState(false); var isManager=isManagerS[0]; var setIsManager=isManagerS[1];
+  var showLoginS=useState(false); var showLogin=showLoginS[0]; var setShowLogin=showLoginS[1];
+  var pwInputS=useState(""); var pwInput=pwInputS[0]; var setPwInput=pwInputS[1];
+  var pwErrorS=useState(false); var pwError=pwErrorS[0]; var setPwError=pwErrorS[1];
+
+  // ── 画面 ──
+  var tabS=useState("punch"); var tab=tabS[0]; var setTab=tabS[1];
+  var selEmpS=useState(EMPLOYEES[0].id); var selEmp=selEmpS[0]; var setSelEmp=selEmpS[1];
+
+  // ── データ ──
+  var wishesS=useState(initWishes); var wishes=wishesS[0]; var setWishes=wishesS[1];
+  var shiftsS=useState(initShifts); var shifts=shiftsS[0]; var setShifts=shiftsS[1];
+  var attS=useState(initAtt); var att=attS[0]; var setAtt=attS[1];
+
+  // ── 期間 ──
+  var pYS=useState(MONTH===0?YEAR-1:YEAR); var pY=pYS[0]; var setPY=pYS[1];
+  var pMS=useState(MONTH===0?11:MONTH-1); var pM=pMS[0]; var setPM=pMS[1];
+  var pdfYS=useState(YEAR); var pdfY=pdfYS[0]; var setPdfY=pdfYS[1];
+  var pdfMS=useState(MONTH); var pdfM=pdfMS[0]; var setPdfM=pdfMS[1];
+
+  // ── モーダル ──
+  var wishEditS=useState(null); var wishEdit=wishEditS[0]; var setWishEdit=wishEditS[1];
+  var wishYS=useState(YEAR); var wishY=wishYS[0]; var setWishY=wishYS[1];
+  var wishMS=useState(MONTH); var wishM=wishMS[0]; var setWishM=wishMS[1];
+  var notificationsS=useState([]); var notifications=notificationsS[0]; var setNotifications=notificationsS[1];
+  var editShiftS=useState(null); var editShift=editShiftS[0]; var setEditShift=editShiftS[1];
+  var editAttS=useState(null); var editAtt=editAttS[0]; var setEditAtt=editAttS[1];
+  var editFormS=useState({}); var editForm=editFormS[0]; var setEditForm=editFormS[1];
+  var editRecS=useState(null); var editRec=editRecS[0]; var setEditRec=editRecS[1];
+  var editTimeS=useState(""); var editTime=editTimeS[0]; var setEditTime=editTimeS[1];
+  var toastS=useState(null); var toast=toastS[0]; var setToast=toastS[1];
+  var locLoadS=useState(false); var locLoad=locLoadS[0]; var setLocLoad=locLoadS[1];
+
+  var days=getDim(YEAR,MONTH);
+  var dayArr=Array.from({length:days},function(_,i){return i+1;});
+  var periodDays=buildPeriodDays(pY,pM);
+
+  function showToast(msg){setToast(msg);setTimeout(function(){setToast(null);},2400);}
+
+  // 起動時にSupabaseからデータ読み込み
+  useEffect(function(){
+    if(!window.loadAttendance) return;
+    window.loadAttendance(YEAR, MONTH, function(rows){
+      if(!rows || rows.length===0) return;
+      setAtt(function(prev){
+        var next=Object.assign({},prev);
+        rows.forEach(function(row){
+          // employee_idからidを逆引き
+          var empId=null;
+          Object.keys(window._empUUIDs||{}).forEach(function(k){
+            if(window._empUUIDs[k]===row.employee_id) empId=parseInt(k);
+          });
+          // int8の場合は直接比較
+          if(!empId){
+            empId=row.employee_id;
+          }
+          if(!next[empId]) return;
+          var day=parseInt(row.date.split('-')[2]);
+          next[empId]=Object.assign({},next[empId]);
+          next[empId][day]={
+            in:  row.time_in    ? {time:row.time_in,   loc:row.loc_in||'',edited:false,editLog:[]} : null,
+            out: row.time_out   ? {time:row.time_out,  loc:'',edited:false,editLog:[]} : null,
+            bs:  row.break_start? {time:row.break_start,loc:'',edited:false,editLog:[]} : null,
+            be:  row.break_end  ? {time:row.break_end,  loc:'',edited:false,editLog:[]} : null,
+            breakType: row.break_type||'',
+            status:    row.status||'',
+            memo:      row.memo||'',
+            register:  row.register||false,
+            confirmed: row.confirmed||false,
+          };
+        });
+        return next;
+      });
+      showToast("データを読み込みました ✓");
+    });
+  },[]);
+
+  // ── 認証 ──
+  function tryLogin() {
+    if(pwInput===MANAGER_PW){setIsManager(true);setShowLogin(false);setPwInput("");showToast("店長としてログインしました 👑");}
+    else{setPwError(true);}
+  }
+
+  // ── 希望 ──
+  function cycleWish(eid,d) {
+    var key=wishY+"-"+wishM;
+    setWishes(function(p){
+      var empW=p[eid]||{};
+      var monthW=empW[key]||{};
+      var r=Object.assign({},monthW[d]||{shift:"早番",note:""});
+      r.shift=WISH_OPTIONS[(WISH_OPTIONS.indexOf(r.shift)+1)%WISH_OPTIONS.length];
+      var newMonth=Object.assign({},monthW);newMonth[d]=r;
+      var newEmp=Object.assign({},empW);newEmp[key]=newMonth;
+      var n=Object.assign({},p);n[eid]=newEmp;return n;
+    });
+  }
+  function setWishNote(eid,d,val) {
+    var key=wishY+"-"+wishM;
+    setWishes(function(p){
+      var empW=p[eid]||{};
+      var monthW=empW[key]||{};
+      var r=Object.assign({},monthW[d]||{shift:"早番",note:""});
+      r.note=val;
+      var newMonth=Object.assign({},monthW);newMonth[d]=r;
+      var newEmp=Object.assign({},empW);newEmp[key]=newMonth;
+      var n=Object.assign({},p);n[eid]=newEmp;return n;
+    });
+  }
+
+  // ── シフト ──
+  function doSetShift(eid,d,v) {
+    setShifts(function(p){var e=Object.assign({},p[eid]);e[d]=v;var n=Object.assign({},p);n[eid]=e;return n;});
+    setEditShift(null);
+  }
+  function autoFill() {
+    var types=["早番","遅番","中番","早番","中番"],next={};
+    EMPLOYEES.forEach(function(e,ei){next[e.id]={};for(var d=1;d<=days;d++){var w=(wishes[e.id][d]||{}).shift||"早番";next[e.id][d]=w==="休み"?"休み":["早番","遅番","中番"].indexOf(w)!==-1?w:types[(ei+d)%5];}});
+    setShifts(next);showToast("希望を反映してシフトを自動作成しました ✨");
+  }
+
+  // ── 打刻 ──
+  function punch(eid,day,field) {
+    setLocLoad(true);
+    var now=fmtNow();
+    getLocation(function(loc){
+      setLocLoad(false);
+      setAtt(function(p){
+        var r=Object.assign({},p[eid][day]);
+        r[field]=makeEntry(now,loc);
+        var ea=Object.assign({},p[eid]);
+        ea[day]=r;
+        var n=Object.assign({},p);
+        n[eid]=ea;
+        // Supabaseに保存
+        if(window.saveRecord) window.saveRecord(eid,day,MONTH,YEAR,ea[day]);
+        return n;
+      });
+      var L={in:"出勤",out:"退勤",bs:"休憩開始",be:"休憩終了"};
+      showToast((EMPLOYEES.find(function(e){return e.id===eid;})||{}).name+" — "+L[field]+" "+now+"  📍"+loc);
+    });
+  }
+  function updateRec(eid,day,key,val) {
+    setAtt(function(p){var r=Object.assign({},p[eid][day]);r[key]=val;var ea=Object.assign({},p[eid]);ea[day]=r;var n=Object.assign({},p);n[eid]=ea;return n;});
+  }
+  function openAttEdit(eid,day){setEditAtt({eid:eid,day:day});setEditForm(Object.assign({},att[eid][day]));}
+  function saveAttEdit(){var eid=editAtt.eid,day=editAtt.day;setAtt(function(p){var ea=Object.assign({},p[eid]);ea[day]=Object.assign({},editForm);var n=Object.assign({},p);n[eid]=ea;return n;});setEditAtt(null);showToast("保存しました");}
+  function openEditRec(eid,day,field){var entry=att[eid][day][field];setEditRec({empId:eid,day:day,field:field});setEditTime(entry?entry.time:"");}
+  function saveEditRec(){var eid=editRec.empId,day=editRec.day,field=editRec.field,now=fmtNow();setAtt(function(p){var r=Object.assign({},p[eid][day]);var prev=r[field]||makeEntry("","");var log=(prev.editLog||[]).concat([{before:prev.time,at:now}]);r[field]={time:editTime,loc:prev.loc,edited:true,editLog:log};var ea=Object.assign({},p[eid]);ea[day]=r;var n=Object.assign({},p);n[eid]=ea;return n;});setEditRec(null);showToast("打刻を修正しました ✓");}
+
+  // ── スタイル ──
+  var cardS={background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:18,marginBottom:18};
+  var inputS={background:C.panel,border:"1px solid "+C.border,borderRadius:6,padding:"7px 10px",color:C.text,fontFamily:"inherit",fontSize:13,width:"100%",boxSizing:"border-box"};
+  function empBtn(a){return{padding:"5px 14px",borderRadius:20,border:"1px solid "+(a?C.accent:C.border),background:a?C.accent+"22":"transparent",color:a?C.accent:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:a?700:400};}
+  function thS(y,m,d){var td=getIsToday(y,m,d),wk=getIsWE(y,m,d);return{padding:"5px 2px",textAlign:"center",background:td?C.accent+"22":wk?C.red+"0D":C.panel,color:td?C.accent:wk?C.red:C.dim,fontWeight:700,fontSize:10,borderBottom:"1px solid "+C.border,borderRight:"1px solid "+C.border,minWidth:68};}
+  var stickyTh={padding:"10px 14px",background:C.panel,color:C.dim,fontWeight:700,fontSize:10,textAlign:"left",position:"sticky",left:0,zIndex:3,borderRight:"2px solid "+C.border,borderBottom:"1px solid "+C.border,whiteSpace:"nowrap",minWidth:110};
+  function stickyTd(i){return{padding:"8px 14px",background:i%2===0?C.card:C.panel,fontWeight:700,fontSize:12,position:"sticky",left:0,zIndex:1,borderRight:"2px solid "+C.border,borderBottom:"1px solid "+C.border,whiteSpace:"nowrap"};}
+  function pBtn(bg){return{padding:"11px 22px",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,background:bg,color:"#fff"};}
+
+  // ── ナビ定義 ──
+  var staffTabs=[
+    {key:"punch",  label:"⏱ 打刻"},
+    {key:"wish",   label:"📅 希望"},
+    {key:"mysum",  label:"📊 個人集計"},
+  ];
+  var managerTabs=[
+    {key:"shift",  label:"① シフト編集", badge:true},
+    {key:"pdf",    label:"② PDF出力"},
+    {key:"attend", label:"③ 勤怠"},
+    {key:"allsum", label:"④ 全員集計"},
+  ];
+
+  // ══════════════════════════════════════
+  // ① 打刻
+  // ══════════════════════════════════════
+  function PunchTab() {
+    var emp=EMPLOYEES.find(function(e){return e.id===selEmp;});
+    var rec=att[selEmp][TODAY]||{};
+    var net=calcNet(entryTime(rec.in),entryTime(rec.out),entryTime(rec.bs),entryTime(rec.be));
+    var confirmed=rec.confirmed;
+
+    // 確定カード
+    function DailyCard() {
+      var draftS=useState({status:rec.status||"",register:rec.register||false,memo:rec.memo||""});
+      var draft=draftS[0]; var setDraft=draftS[1];
+      function confirm(){
+        updateRec(selEmp,TODAY,"status",draft.status);
+        updateRec(selEmp,TODAY,"register",draft.register);
+        updateRec(selEmp,TODAY,"memo",draft.memo);
+        updateRec(selEmp,TODAY,"confirmed",true);
+        // Supabaseに保存
+        var updatedRec=Object.assign({},att[selEmp][TODAY],{status:draft.status,register:draft.register,memo:draft.memo,confirmed:true});
+        if(window.saveRecord) window.saveRecord(selEmp,TODAY,MONTH,YEAR,updatedRec);
+        showToast("本日の勤怠を確定しました ✓");
+      }
+      if(confirmed){
+        return(
+          <div style={{background:C.card,border:"2px solid "+C.green,borderRadius:10,padding:18,marginBottom:18}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <span style={{fontSize:16}}>✅</span>
+              <span style={{fontWeight:800,fontSize:14,color:C.green}}>本日の勤怠を確定済み</span>
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",fontSize:12}}>
+              {rec.status&&<span style={{color:(STATUS_LIST.find(function(s){return s.key===rec.status;})||{color:C.dim}).color,fontWeight:700,border:"1px solid currentColor",borderRadius:10,padding:"2px 10px"}}>{rec.status}</span>}
+              {rec.register&&<span style={{color:"#F9A825",fontWeight:700,border:"1px solid #F9A825",borderRadius:10,padding:"2px 10px"}}>🏧 レジ締め</span>}
+              {rec.memo&&<span style={{color:C.purple}}>📝 {rec.memo}</span>}
+            </div>
+            <button onClick={function(){updateRec(selEmp,TODAY,"confirmed",false);setDraft({status:rec.status||"",register:rec.register||false,memo:rec.memo||""});}}
+              style={{marginTop:10,padding:"5px 14px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:11}}>✏️ 修正する</button>
+          </div>
+        );
+      }
+      return(
+        <div style={cardS}>
+          <div style={{fontSize:11,fontWeight:700,color:C.text,marginBottom:12}}>📋 本日の勤怠情報</div>
+          <div style={{fontSize:10,color:C.dim,marginBottom:6,letterSpacing:1}}>ステータス</div>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
+            {STATUS_LIST.map(function(s){var active=draft.status===s.key;return(<button key={s.key} onClick={function(){setDraft(function(d){return Object.assign({},d,{status:s.key});});}} style={{padding:"8px 16px",borderRadius:20,border:"2px solid "+(active?s.border:C.border),background:active?s.border+"22":"transparent",color:active?s.color:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:active?700:400}}>{s.label}</button>);})}
+          </div>
+          <div style={{fontSize:10,color:C.dim,marginBottom:6,letterSpacing:1}}>レジ締め</div>
+          <div style={{display:"flex",gap:8,marginBottom:14}}>
+            <button onClick={function(){setDraft(function(d){return Object.assign({},d,{register:true});});}} style={{padding:"8px 20px",borderRadius:20,border:"2px solid "+(draft.register?"#F9A825":C.border),background:draft.register?"#F9A82522":"transparent",color:draft.register?"#F9A825":C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:draft.register?700:400}}>🏧 あり</button>
+            <button onClick={function(){setDraft(function(d){return Object.assign({},d,{register:false});});}} style={{padding:"8px 20px",borderRadius:20,border:"2px solid "+(!draft.register?C.border:C.border),background:!draft.register?C.panel:"transparent",color:!draft.register?C.text:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>なし</button>
+          </div>
+          <div style={{fontSize:10,color:C.dim,marginBottom:5,letterSpacing:1}}>コメント（任意）</div>
+          <textarea defaultValue={draft.memo} rows={2} placeholder="例: 有給取得（私用）" onInput={function(e){setDraft(function(d){return Object.assign({},d,{memo:e.target.value});});}} style={{background:C.panel,border:"1px solid "+C.border,borderRadius:6,padding:"8px 10px",color:C.text,fontFamily:"inherit",fontSize:13,width:"100%",boxSizing:"border-box",resize:"vertical",lineHeight:1.6,marginBottom:14}}/>
+          <button onClick={confirm} style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",cursor:"pointer",background:C.green,color:"#0D1117",fontFamily:"inherit",fontSize:15,fontWeight:800}}>✅ 確定する</button>
+        </div>
+      );
+    }
+
+    return(
+      <div>
+        <div style={cardS}>
+          <div style={{fontSize:10,color:C.dim,letterSpacing:2,marginBottom:10}}>あなたは？</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{EMPLOYEES.map(function(e){return <button key={e.id} style={empBtn(e.id===selEmp)} onClick={function(){setSelEmp(e.id);}}>{e.name}</button>;})}</div>
+        </div>
+
+        <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:28,marginBottom:18,textAlign:"center"}}>
+          <div style={{fontWeight:900,fontSize:22,color:C.accent,marginBottom:4}}>{emp.name}</div>
+          <LiveClock style={{fontFamily:"monospace",fontSize:32,fontWeight:900,color:C.text,letterSpacing:3}}/>
+          <div style={{fontSize:11,color:C.dim,marginTop:6,marginBottom:6}}>{NOW.toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"})}</div>
+          {locLoad&&<div style={{fontSize:11,color:C.yellow,marginBottom:8}}>📡 位置情報取得中...</div>}
+          <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",marginBottom:10}}>
+            <button onClick={function(){punch(selEmp,TODAY,"in");}} style={pBtn("#16A34A")}>🟢 出勤</button>
+            <button onClick={function(){punch(selEmp,TODAY,"out");}} style={pBtn("#DC2626")}>🔴 退勤</button>
+          </div>
+          <div style={{background:C.panel,borderRadius:10,padding:"12px 16px",textAlign:"left"}}>
+            <div style={{fontSize:10,color:C.dim,marginBottom:8,letterSpacing:1}}>休憩時間を選んで打刻</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+              {BREAK_OPTIONS.map(function(opt){var active=(rec.breakType||"")===opt.key;return(<button key={opt.key} onClick={function(){updateRec(selEmp,TODAY,"breakType",opt.key);}} style={{padding:"7px 14px",borderRadius:20,border:"2px solid "+(active?"#CA8A04":C.border),background:active?"#CA8A0422":"transparent",color:active?"#CA8A04":C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:active?700:400}}>{opt.label}</button>);})}</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={function(){var bt=rec.breakType||"45";var bMin=bt==="60"?60:bt==="0"?0:45;if(bMin===0){showToast("休憩なしを選択中です");return;}punch(selEmp,TODAY,"bs");var parts=fmtNow().split(":");var totalM=parseInt(parts[0])*60+parseInt(parts[1])+bMin;var endH=Math.floor(totalM/60)%24,endM=totalM%60;setTimeout(function(){updateRec(selEmp,TODAY,"be",makeEntry(pad2(endH)+":"+pad2(endM),""));},100);}} style={pBtn("#CA8A04")}>☕ 休憩開始</button>
+              <button onClick={function(){punch(selEmp,TODAY,"be");}} style={pBtn("#2563EB")}>🔙 休憩終了（手動）</button>
+            </div>
+          </div>
+        </div>
+
+        <div style={cardS}>
+          <div style={{fontSize:11,fontWeight:700,color:C.text,marginBottom:12}}>本日の打刻記録</div>
+          {[{key:"in",label:"出勤",color:C.green},{key:"out",label:"退勤",color:C.red},{key:"bs",label:"休憩開始",color:C.yellow},{key:"be",label:"休憩終了",color:C.yellow}].map(function(f){var entry=rec[f.key];var t=entryTime(entry);return(
+            <div key={f.key} style={{background:C.panel,borderRadius:8,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+              <div style={{minWidth:70}}>
+                <div style={{fontSize:9,color:C.dim,marginBottom:2}}>{f.label}</div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:16,fontWeight:800,color:t?f.color:C.dim}}>{t||"－"}</span>
+                  {entryEdited(entry)&&<span style={{fontSize:9,color:C.orange,border:"1px solid "+C.orange,borderRadius:4,padding:"0 4px",fontWeight:700}}>修正済</span>}
+                </div>
+                {entryLoc(entry)&&<div style={{fontSize:9,color:C.dim,marginTop:1}}>📍 {entryLoc(entry)}</div>}
+              </div>
+              {t&&<button onClick={function(){openEditRec(selEmp,TODAY,f.key);}} style={{marginLeft:"auto",padding:"4px 10px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:11}}>✏️ 修正</button>}
+            </div>
+          );})}
+        </div>
+
+        <DailyCard/>
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════
+  // ② 全員状況
+  // ══════════════════════════════════════
+  function AllTab() {
+    return(
+      <div>
+        <div style={cardS}>
+          <div style={{fontWeight:800,fontSize:14,color:C.accent,marginBottom:4}}>{NOW.toLocaleDateString("ja-JP",{month:"long",day:"numeric",weekday:"long"})} — 全員の打刻状況</div>
+          <div style={{fontSize:11,color:C.dim}}>自分の打刻のみ ✏️ で修正できます</div>
+        </div>
+        {EMPLOYEES.map(function(e,i){
+          var rec=att[e.id][TODAY]||{};
+          var net=calcNet(entryTime(rec.in),entryTime(rec.out),entryTime(rec.bs),entryTime(rec.be));
+          var so=STATUS_LIST.find(function(s){return s.key===(rec.status||"");})||STATUS_LIST[0];
+          var isSelf=e.id===selEmp;
+          return(
+            <div key={e.id} style={{background:C.card,border:"1px solid "+(isSelf?C.accent:C.border),borderRadius:12,padding:16,marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <div style={{width:36,height:36,borderRadius:"50%",background:isSelf?C.accent+"22":C.panel,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:isSelf?C.accent:C.dim}}>{e.name[0]}</div>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14}}>{e.name}{isSelf&&<span style={{fontSize:10,color:C.accent,marginLeft:6}}>（自分）</span>}</div>
+                  {rec.status&&<span style={{fontSize:10,color:so.color,border:"1px solid "+so.border,borderRadius:10,padding:"1px 7px",fontWeight:700}}>{rec.status}</span>}
+                </div>
+                {net!==null&&<span style={{marginLeft:"auto",fontSize:14,fontWeight:800,color:C.yellow}}>{fmtMin(net)}</span>}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:6}}>
+                {[{key:"in",label:"出勤",color:C.green},{key:"out",label:"退勤",color:C.red},{key:"bs",label:"休憩開始",color:C.yellow},{key:"be",label:"休憩終了",color:C.yellow}].map(function(f){
+                  var entry=rec[f.key],t=entryTime(entry),loc=entryLoc(entry);
+                  return(
+                    <div key={f.key} style={{background:C.panel,borderRadius:7,padding:"8px 10px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                      <div>
+                        <div style={{fontSize:9,color:C.dim,marginBottom:2}}>{f.label}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:4}}>
+                          <span style={{fontSize:14,fontWeight:800,color:t?f.color:C.dim}}>{t||"－"}</span>
+                          {entryEdited(entry)&&<span style={{fontSize:8,color:C.orange,border:"1px solid "+C.orange,borderRadius:3,padding:"0 3px",fontWeight:700}}>修正</span>}
+                        </div>
+                        {loc&&<div style={{fontSize:8,color:C.dim}}>📍{loc}</div>}
+                      </div>
+                      {isSelf&&t&&<button onClick={function(){openEditRec(e.id,TODAY,f.key);}} style={{padding:"2px 7px",borderRadius:5,border:"1px solid "+C.border,background:"transparent",color:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:10,flexShrink:0}}>✏️</button>}
+                    </div>
+                  );
+                })}
+              </div>
+              {rec.memo&&<div style={{marginTop:8,fontSize:11,color:C.purple,background:C.panel,borderRadius:6,padding:"6px 10px"}}>📝 {rec.memo}</div>}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════
+  // ③ 希望入力
+  // ══════════════════════════════════════
+  function WishTab() {
+    var emp=EMPLOYEES.find(function(e){return e.id===selEmp;});
+    var wishKey=wishY+"-"+wishM;
+    var wishDays=getDim(wishY,wishM);
+    var wishDayArr=Array.from({length:wishDays},function(_,i){return i+1;});
+    var firstDow=(new Date(wishY,wishM,1).getDay()+1)%7;
+    var nextM=wishM===11?0:wishM+1;
+    var nextY=wishM===11?wishY+1:wishY;
+    var prevM=wishM===0?11:wishM-1;
+    var prevY=wishM===0?wishY-1:wishY;
+    return(
+      <div>
+        <div style={cardS}>
+          <div style={{fontSize:10,color:C.dim,letterSpacing:2,marginBottom:10}}>あなたは？</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>{EMPLOYEES.map(function(e){return <button key={e.id} style={empBtn(e.id===selEmp)} onClick={function(){setSelEmp(e.id);}}>{e.name}</button>;})}</div>
+          <div style={{fontSize:11,color:C.dim}}>タップでシフト切替 / ✏️で備考入力</div>
+        </div>
+        <div style={cardS}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+            <button onClick={function(){setWishM(prevM);setWishY(prevY);}} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>‹</button>
+            <span style={{fontWeight:800,fontSize:14,color:C.accent,flex:1,textAlign:"center"}}>{wishY}年 {wishM+1}月</span>
+            <button onClick={function(){setWishM(nextM);setWishY(nextY);}} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>›</button>
+          </div>
+          <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:14}}>{emp.name} の希望</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5,marginBottom:8}}>
+            {["土","日","月","火","水","木","金"].map(function(dn){return <div key={dn} style={{textAlign:"center",fontSize:10,fontWeight:700,color:dn==="日"?C.red:dn==="土"?C.accent:C.dim,paddingBottom:4}}>{dn}</div>;})}
+            {Array.from({length:firstDow},function(_,i){return <div key={"x"+i}/>;}) }
+            {wishDayArr.map(function(d){
+              var wk=getIsWE(wishY,wishM,d),td=getIsToday(wishY,wishM,d);
+              var monthWishes=(wishes[selEmp]&&wishes[selEmp][wishKey])||{};
+              var w=monthWishes[d]||{shift:"休み",note:""};
+              var hasNote=w.note&&w.note.length>0;
+              return(
+                <div key={d} style={{borderRadius:8,border:"1px solid "+(td?C.accent:wk?"#30363D":C.border),background:td?C.accent+"12":wk?"#1C2128":C.card,overflow:"hidden"}}>
+                  <div onClick={function(){cycleWish(selEmp,d);}} style={{padding:"6px 4px",textAlign:"center",cursor:"pointer"}}>
+                    <div style={{fontSize:10,color:wk?C.red:C.dim,fontWeight:td?700:400,marginBottom:3}}>{d}</div>
+                    <ShiftBadge type={w.shift} size={26}/>
+                    <div style={{fontSize:8,color:(SHIFT_DEF[w.shift]||{}).color,marginTop:2,fontWeight:600}}>{w.shift}</div>
+                  </div>
+                  <div style={{borderTop:"1px solid "+C.border,display:"flex",justifyContent:"center",padding:"3px 0"}}>
+                    <button onClick={function(){setWishEdit(d);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:hasNote?C.yellow:C.dim,padding:"1px 6px"}}>{hasNote?"📝":"✏️"}</button>
+                  </div>
+                  {hasNote&&<div style={{fontSize:7,color:C.yellow,padding:"0 4px 4px",textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.note}</div>}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}>
+            <button onClick={function(){
+              showToast(emp.name+"の希望を保存しました ✓");
+              setNotifications(function(prev){
+                var filtered=prev.filter(function(n){return!(n.empId===selEmp&&n.read===false);});
+                return filtered.concat([{id:Date.now(),empId:selEmp,name:emp.name,date:new Date().toLocaleDateString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}),read:false}]);
+              });
+            }} style={{padding:"9px 22px",borderRadius:8,border:"none",cursor:"pointer",background:C.accent,color:"#0D1117",fontFamily:"inherit",fontSize:13,fontWeight:700}}>保存する</button>
+          </div>
+        </div>
+        {wishEdit!==null&&(
+          <WishNoteModal
+            day={wishEdit}
+            empId={selEmp}
+            monthLabel={wishM+1}
+            initialNote={((wishes[selEmp]&&wishes[selEmp][wishKey]&&wishes[selEmp][wishKey][wishEdit])||{note:""}).note||""}
+            currentShift={((wishes[selEmp]&&wishes[selEmp][wishKey]&&wishes[selEmp][wishKey][wishEdit])||{shift:"休み"}).shift}
+            wishOptions={WISH_OPTIONS}
+            shiftDef={SHIFT_DEF}
+            getSym={getSym}
+            onShiftChange={function(opt){setWishes(function(p){var r=Object.assign({},p[selEmp][wishEdit]);r.shift=opt;var e=Object.assign({},p[selEmp]);e[wishEdit]=r;var n=Object.assign({},p);n[selEmp]=e;return n;});}}
+            onSave={function(note){setWishNote(selEmp,wishEdit,note);showToast("希望を保存しました");}}
+            onClose={function(){setWishEdit(null);}}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════
+  // ④ 個人集計
+  // ══════════════════════════════════════
+  function MySummaryTab() {
+    var nyM=pM===11?0:pM+1,nyY=pM===11?pY+1:pY;
+    var emp=EMPLOYEES.find(function(e){return e.id===selEmp;});
+    var workDays=0,overtimeMin=0,registerC=0,paidC=0,absC=0,holidayC=0;
+    var memos=[];
+    periodDays.forEach(function(item){
+      var isCur=item.y===YEAR&&item.m===MONTH;
+      if(!isCur) return;
+      var rec=att[selEmp][item.d]||{};
+      var net2=calcNet(entryTime(rec.in),entryTime(rec.out),entryTime(rec.bs),entryTime(rec.be));
+      if(net2){workDays++;overtimeMin+=calcOvertime(net2);}
+      if(rec.status==="有給") paidC++;
+      if(rec.status==="欠勤") absC++;
+      if(rec.status==="休日出勤") holidayC++;
+      if(rec.register) registerC++;
+      if(rec.memo) memos.push({date:item.m+1+"/"+item.d,status:rec.status,memo:rec.memo});
+    });
+    return(
+      <div>
+        <div style={cardS}>
+          <div style={{fontSize:10,color:C.dim,letterSpacing:2,marginBottom:10}}>あなたは？</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>{EMPLOYEES.map(function(e){return <button key={e.id} style={empBtn(e.id===selEmp)} onClick={function(){setSelEmp(e.id);}}>{e.name}</button>;})}</div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <button onClick={function(){var m=pM-1,y=pY;if(m<0){m=11;y--;}setPM(m);setPY(y);}} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>‹</button>
+            <span style={{fontWeight:700,fontSize:13,color:C.accent}}>{pY}年{pM+1}月16日〜{nyY}年{nyM+1}月15日</span>
+            <button onClick={function(){var m=pM+1,y=pY;if(m>11){m=0;y++;}setPM(m);setPY(y);}} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>›</button>
+          </div>
+        </div>
+        <div style={cardS}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+            <div style={{width:44,height:44,borderRadius:"50%",background:C.accent+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:900,color:C.accent}}>{emp.name[0]}</div>
+            <div style={{fontWeight:800,fontSize:18}}>{emp.name}</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8,marginBottom:16}}>
+            {[{label:"出勤日数",val:workDays+"日",color:C.green},{label:"残業時間",val:overtimeMin>0?fmtOT(overtimeMin):"なし",color:C.orange},{label:"有給",val:paidC+"日",color:"#34D399"},{label:"欠勤",val:absC+"日",color:C.red},{label:"休日出勤",val:holidayC+"回",color:"#A78BFA"},{label:"レジ締め",val:registerC+"回",color:"#F9A825"}].map(function(s){return(<div key={s.label} style={{background:C.panel,borderRadius:10,padding:"10px 12px",textAlign:"center"}}><div style={{fontSize:10,color:C.dim,marginBottom:4}}>{s.label}</div><div style={{fontSize:18,fontWeight:900,color:s.color}}>{s.val}</div></div>);})}
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{borderCollapse:"collapse",width:"100%",fontSize:11}}>
+              <thead>
+                <tr>{["日付","出勤","退勤","休憩","残業","状態","コメント"].map(function(h){return <th key={h} style={{padding:"6px 8px",background:C.panel,color:C.dim,fontSize:10,textAlign:h==="日付"||h==="コメント"?"left":"center",borderBottom:"1px solid "+C.border,whiteSpace:"nowrap"}}>{h}</th>;})}</tr>
+              </thead>
+              <tbody>
+                {periodDays.map(function(item,idx){
+                  var isCur=item.y===YEAR&&item.m===MONTH;
+                  var recAtt=isCur?(att[selEmp][item.d]||{}):{};
+                  var inT=entryTime(recAtt.in),outT=entryTime(recAtt.out);
+                  var wk=getIsWE(item.y,item.m,item.d),td=getIsToday(item.y,item.m,item.d);
+                  var so=STATUS_LIST.find(function(s){return s.key===(recAtt.status||"");})||STATUS_LIST[0];
+                  var breakVal=(function(){if(!isCur||!inT)return"－";var bt=recAtt.breakType;if(!bt)return"－";if(bt==="0")return"なし";return bt==="60"?"1:00":"0:45";})();
+                  return(
+                    <tr key={idx}>
+                      <td style={{padding:"6px 8px",borderBottom:"1px solid "+C.border,color:wk?C.red:td?C.accent:C.text,fontWeight:td?700:400,whiteSpace:"nowrap"}}>{item.m+1}/{item.d}({getDayName(item.y,item.m,item.d)})</td>
+                      <td style={{padding:"6px 8px",borderBottom:"1px solid "+C.border,textAlign:"center",color:C.green,fontWeight:700}}>{inT||"－"}{entryEdited(recAtt.in)&&<span style={{fontSize:8,color:C.orange,marginLeft:3}}>修正</span>}</td>
+                      <td style={{padding:"6px 8px",borderBottom:"1px solid "+C.border,textAlign:"center",color:C.red,fontWeight:700}}>{outT||"－"}{entryEdited(recAtt.out)&&<span style={{fontSize:8,color:C.orange,marginLeft:3}}>修正</span>}</td>
+                      <td style={{padding:"6px 8px",borderBottom:"1px solid "+C.border,textAlign:"center",color:C.yellow}}>{breakVal}</td>
+                      <td style={{padding:"6px 8px",borderBottom:"1px solid "+C.border,textAlign:"center",color:C.orange,fontWeight:700}}>{(function(){if(!isCur||!entryTime(recAtt.in))return"－";var nt=calcNet(entryTime(recAtt.in),entryTime(recAtt.out),entryTime(recAtt.bs),entryTime(recAtt.be));var ot=calcOvertime(nt);return ot>0?fmtOT(ot):"－";})()}</td>
+                      <td style={{padding:"6px 8px",borderBottom:"1px solid "+C.border,textAlign:"center"}}>{recAtt.status&&<span style={{fontSize:10,color:so.color,border:"1px solid "+so.border,borderRadius:10,padding:"1px 7px",fontWeight:700}}>{recAtt.status}</span>}</td>
+                      <td style={{padding:"6px 8px",borderBottom:"1px solid "+C.border,color:C.purple,fontSize:11,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{recAtt.memo||""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════
+  // ⑤ シフト編集（店長）
+  // ══════════════════════════════════════
+  function ShiftTab() {
+    var unread=notifications.filter(function(n){return !n.read;});
+    return(
+      <div>
+        {notifications.length>0&&(
+          <div style={{background:C.card,border:"1px solid "+(unread.length>0?C.orange:C.border),borderRadius:10,padding:18,marginBottom:18}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:unread.length>0?12:0}}>
+              <span style={{fontSize:16}}>📣</span>
+              <span style={{fontWeight:700,fontSize:14,color:unread.length>0?C.orange:C.dim}}>希望変更通知</span>
+              {unread.length>0&&<span style={{background:C.orange,color:"#0D1117",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:800}}>{unread.length}件</span>}
+              <button onClick={function(){setNotifications(function(prev){return prev.map(function(n){return Object.assign({},n,{read:true});});});}} style={{marginLeft:"auto",padding:"4px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:11}}>すべて既読</button>
+            </div>
+            {notifications.length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {notifications.slice().reverse().map(function(n){return(
+                  <div key={n.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:n.read?C.panel:C.orange+"11",borderRadius:8,border:"1px solid "+(n.read?C.border:C.orange+"44")}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:n.read?C.dim:C.orange,flexShrink:0}}></div>
+                    <div style={{flex:1}}>
+                      <span style={{fontWeight:700,fontSize:13,color:n.read?C.dim:C.text}}>{n.name}</span>
+                      <span style={{fontSize:11,color:C.dim,marginLeft:8}}>が希望を変更しました</span>
+                    </div>
+                    <span style={{fontSize:10,color:C.dim,whiteSpace:"nowrap"}}>{n.date}</span>
+                    {!n.read&&<button onClick={function(){setNotifications(function(prev){return prev.map(function(x){return x.id===n.id?Object.assign({},x,{read:true}):x;});});}} style={{padding:"3px 10px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:10}}>既読</button>}
+                  </div>
+                );})}
+              </div>
+            )}
+          </div>
+        )}
+        <div style={cardS}>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
+            <button onClick={autoFill} style={{padding:"9px 20px",borderRadius:8,border:"none",cursor:"pointer",background:C.accent,color:"#0D1117",fontFamily:"inherit",fontSize:13,fontWeight:700}}>✨ 希望から自動作成</button>
+            <button onClick={function(){showToast("シフトを保存しました");}} style={{padding:"9px 20px",borderRadius:8,border:"1px solid "+C.border,cursor:"pointer",background:"transparent",color:C.text,fontFamily:"inherit",fontSize:13}}>保存</button>
+            <button onClick={function(){setTab("pdf");}} style={{padding:"9px 20px",borderRadius:8,border:"none",cursor:"pointer",background:C.orange,color:"#0D1117",fontFamily:"inherit",fontSize:13,fontWeight:700,marginLeft:"auto"}}>🖨 PDF →</button>
+          </div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{fontSize:10,color:C.dim}}>凡例</span>
+            {SHIFT_TYPES.map(function(t){return(<span key={t} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11}}><ShiftBadge type={t} size={20}/><span style={{color:C.dim}}>{t}</span></span>);})}
+            <span style={{fontSize:10,color:C.dim}}>上=希望 下=確定 ❗=不一致</span>
+          </div>
+        </div>
+        <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,marginBottom:18,overflow:"hidden"}}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{borderCollapse:"collapse",width:"100%",fontSize:11}}>
+              <thead>
+                <tr>
+                  <th style={stickyTh}>氏名</th>
+                  {dayArr.map(function(d){return(<th key={d} style={thS(YEAR,MONTH,d)}><div>{d}</div><div style={{fontSize:8}}>{getDayName(YEAR,MONTH,d)}</div></th>);})}
+                </tr>
+              </thead>
+              <tbody>
+                {EMPLOYEES.map(function(e,ei){return(
+                  <tr key={e.id}>
+                    <td style={stickyTd(ei)}>{e.name}</td>
+                    {dayArr.map(function(d){
+                      var wr=wishes[e.id][d]||{shift:"早番",note:""};
+                      var w=wr.shift,sv=shifts[e.id][d];
+                      var conflict=sv&&sv!=="休み"&&w==="休み";
+                      var hasNote=wr.note&&wr.note.length>0;
+                      return(
+                        <td key={d} onClick={function(){setEditShift({empId:e.id,day:d});}}
+                          style={{padding:"3px 2px",textAlign:"center",cursor:"pointer",borderBottom:"1px solid "+C.border,borderRight:"1px solid "+C.border,borderTop:hasNote?"2px solid #F9A825":"1px solid "+C.border,borderLeft:hasNote?"2px solid #F9A825":"1px solid "+C.border,background:hasNote?"#F9A82518":conflict?C.red+"10":getIsToday(YEAR,MONTH,d)?C.accent+"08":"transparent",position:"relative"}}>
+                          <div style={{fontSize:8,color:(SHIFT_DEF[w]||{}).color,fontWeight:700,marginBottom:1}}>{getSym(w)}</div>
+                          {sv?<ShiftBadge type={sv} size={22}/>:<span style={{fontSize:10,color:"#30363D"}}>─</span>}
+                          {conflict&&<span style={{position:"absolute",top:1,right:2,fontSize:8,color:C.red}}>❗</span>}
+                          {hasNote&&<span style={{position:"absolute",top:1,left:2,fontSize:9}}>📝</span>}
+                          {hasNote&&<div style={{fontSize:7,color:"#F9A825",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:62,marginTop:1,fontWeight:700}}>{wr.note}</div>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );})}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════
+  // ⑥ PDF出力（店長）
+  // ══════════════════════════════════════
+  function PdfTab() {
+    var DAY_NAMES=["土","日","月","火","水","木","金"];
+    var totalDays=getDim(pdfY,pdfM);
+    var firstSat=1;
+    while(new Date(pdfY,pdfM,firstSat).getDay()!==6) firstSat++;
+    var weeks=[];
+    if(firstSat>1){
+      var prevM=pdfM===0?11:pdfM-1,prevY=pdfM===0?pdfY-1:pdfY;
+      var prevSat=getDim(prevY,prevM);
+      while(new Date(prevY,prevM,prevSat).getDay()!==6) prevSat--;
+      var fw=[{y:prevY,m:prevM,d:prevSat,prev:true}];
+      for(var d=1;d<firstSat;d++) fw.push({y:pdfY,m:pdfM,d:d,prev:false});
+      while(fw.length<7) fw.push(null);
+      weeks.push(fw);
+    }
+    for(var start=firstSat;start<=totalDays;start+=7){
+      var week=[];
+      for(var i=0;i<7;i++){
+        var day=start+i;
+        if(day<=totalDays) week.push({y:pdfY,m:pdfM,d:day,prev:false});
+        else{var nm2=pdfM===11?0:pdfM+1,ny2=pdfM===11?pdfY+1:pdfY;week.push({y:ny2,m:nm2,d:day-totalDays,prev:false,next:true});}
+      }
+      weeks.push(week);
+    }
+    function dow(item){if(!item)return -1;return new Date(item.y,item.m,item.d).getDay();}
+    function cellLabel(item){if(!item)return"";return(item.prev||item.next)?(item.m+1)+"/"+item.d:item.d+"日";}
+    function dayN(item){if(!item)return"";var d2=dow(item);return DAY_NAMES[d2===6?0:d2+1];}
+    return(
+      <div>
+        <div style={cardS}>
+          <div style={{fontWeight:800,fontSize:15,color:C.orange,marginBottom:10}}>🖨 シフト表 PDF出力</div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+            <button onClick={function(){var m=pdfM-1,y=pdfY;if(m<0){m=11;y--;}setPdfM(m);setPdfY(y);}} style={{padding:"5px 13px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>‹</button>
+            <span style={{fontWeight:800,fontSize:15,color:C.accent}}>{pdfY}年 {pdfM+1}月</span>
+            <button onClick={function(){var m=pdfM+1,y=pdfY;if(m>11){m=0;y++;}setPdfM(m);setPdfY(y);}} style={{padding:"5px 13px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>›</button>
+          </div>
+          <button onClick={function(){var el=document.getElementById("pdf-c");var w=window.open("","_blank");w.document.write("<html><head><title>シフト表</title><style>body{font-family:serif;margin:16px;font-size:9px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:3px 4px;text-align:center;}th{background:#1C1917;color:#fff;}.name{text-align:left;white-space:nowrap;}</style></head><body>"+el.innerHTML+"</body></html>");w.document.close();w.print();}} style={{padding:"11px 28px",borderRadius:8,border:"none",cursor:"pointer",background:C.orange,color:"#0D1117",fontFamily:"inherit",fontSize:14,fontWeight:800}}>🖨 印刷・PDF保存</button>
+        </div>
+        <div id="pdf-c" style={{background:"#fff",border:"1px solid "+C.border,borderRadius:10,padding:20,color:"#000",fontFamily:"serif"}}>
+          <div style={{borderBottom:"3px solid #000",paddingBottom:10,marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+            <div><div style={{fontWeight:900,fontSize:20,letterSpacing:4}}>シフト表</div><div style={{fontSize:11,marginTop:3,color:"#555"}}>{pdfY}年 {pdfM+1}月度</div></div>
+            <div style={{fontSize:10,color:"#777"}}>作成日: {NOW.toLocaleDateString("ja-JP")}</div>
+          </div>
+          {weeks.map(function(week,wi){return(
+            <div key={wi} style={{marginBottom:12}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#555",marginBottom:3,borderLeft:"3px solid #D97706",paddingLeft:6}}>第{wi+1}週</div>
+              <table style={{borderCollapse:"collapse",width:"100%",fontSize:9}}>
+                <thead>
+                  <tr>
+                    <th style={{padding:"5px 8px",background:"#1C1917",color:"#fff",textAlign:"left",border:"1px solid #333",minWidth:70}}>氏名</th>
+                    {week.map(function(item,di){
+                      if(!item) return <th key={di} style={{padding:"4px 2px",background:"#222",border:"1px solid #333",minWidth:36}}></th>;
+                      var d2=dow(item),isPrev=item.prev||item.next;
+                      var color=isPrev?"#666":d2===6?"#93C5FD":d2===0?"#FCA5A5":"#fff";
+                      return(<th key={di} style={{padding:"4px 2px",background:isPrev?"#2a2a2a":"#1C1917",color:color,textAlign:"center",border:"1px solid #333",minWidth:36,fontSize:9}}><div style={{fontWeight:700}}>{cellLabel(item)}</div><div style={{fontSize:8}}>{dayN(item)}</div></th>);
+                    })}
+                    <th style={{padding:"4px 5px",background:"#1C1917",color:"#fff",textAlign:"center",border:"1px solid #333",fontSize:8}}>週計</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {EMPLOYEES.map(function(e,ei){
+                    var wc=0;
+                    return(
+                      <tr key={e.id}>
+                        <td style={{padding:"5px 8px",fontWeight:700,border:"1px solid #ddd",background:ei%2===0?"#fafafa":"#fff",whiteSpace:"nowrap",textAlign:"left"}}>{e.name}</td>
+                        {week.map(function(item,di){
+                          if(!item) return <td key={di} style={{padding:"4px 2px",border:"1px solid #eee",background:"#f0f0f0"}}></td>;
+                          var isCur=item.y===YEAR&&item.m===MONTH;
+                          var s=isCur?(shifts[e.id][item.d]||"休み"):"休み";
+                          var def=SHIFT_DEF[s]||{};
+                          if(s!=="休み"&&!item.prev&&!item.next) wc++;
+                          var d2=dow(item),isPrev=item.prev||item.next;
+                          return(<td key={di} style={{padding:"5px 2px",textAlign:"center",border:"1px solid #ddd",background:isPrev?"#f4f4f4":d2===0?"#FFF5F5":d2===6?"#F0F7FF":"#fff",opacity:isPrev?0.5:1}}>
+                            {!isPrev&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:3,border:"1px solid "+(def.border||"#ccc"),color:def.color||"#555",fontWeight:900,fontSize:11}}>{getSym(s)}</span>}
+                          </td>);
+                        })}
+                        <td style={{padding:"4px 5px",textAlign:"center",border:"1px solid #ddd",fontWeight:700,color:"#15803D",fontSize:10}}>{wc}日</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );})}
+        </div>
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════
+  // ⑦ 勤怠マトリクス（店長）
+  // ══════════════════════════════════════
+  function AttendTab() {
+    var nyM=pM===11?0:pM+1,nyY=pM===11?pY+1:pY;
+    return(
+      <div>
+        <div style={cardS}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <button onClick={function(){var m=pM-1,y=pY;if(m<0){m=11;y--;}setPM(m);setPY(y);}} style={{padding:"5px 13px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>‹</button>
+            <span style={{fontWeight:800,fontSize:14,color:C.accent}}>{pY}年{pM+1}月16日 〜 {nyY}年{nyM+1}月15日</span>
+            <button onClick={function(){var m=pM+1,y=pY;if(m>11){m=0;y++;}setPM(m);setPY(y);}} style={{padding:"5px 13px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>›</button>
+            <span style={{fontSize:10,color:C.dim}}>クリックで編集</span>
+          </div>
+        </div>
+        <div style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,marginBottom:18,overflow:"hidden"}}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{borderCollapse:"collapse",width:"100%",fontSize:11}}>
+              <thead>
+                <tr>
+                  <th style={stickyTh}>氏名</th>
+                  {periodDays.map(function(item){return(<th key={item.y+"-"+item.m+"-"+item.d} style={thS(item.y,item.m,item.d)}><div style={{fontWeight:getIsToday(item.y,item.m,item.d)?900:700}}>{item.m+1}/{item.d}</div><div style={{fontSize:8}}>{getDayName(item.y,item.m,item.d)}</div></th>);})}
+                  <th style={{padding:"6px 8px",background:C.panel,color:C.dim,fontWeight:700,fontSize:10,textAlign:"center",borderBottom:"1px solid "+C.border,minWidth:60}}>合計</th>
+                </tr>
+              </thead>
+              <tbody>
+                {EMPLOYEES.map(function(e,ei){
+                  var total=0;
+                  var cells=periodDays.map(function(item){
+                    var isCur=item.y===YEAR&&item.m===MONTH;
+                    var sv=isCur?(shifts[e.id][item.d]||"休み"):(getIsWE(item.y,item.m,item.d)?"休み":["早番","遅番","中番"][(ei+item.d)%3]);
+                    var rec=isCur?(att[e.id][item.d]||{}):{};
+                    var net=calcNet(entryTime(rec.in),entryTime(rec.out),entryTime(rec.bs),entryTime(rec.be));
+                    if(net) total+=net;
+                    var td=getIsToday(item.y,item.m,item.d),wk=getIsWE(item.y,item.m,item.d);
+                    var so=STATUS_LIST.find(function(s){return s.key===(rec.status||"");})||STATUS_LIST[0];
+                    var inT=entryTime(rec.in),outT=entryTime(rec.out);
+                    return(
+                      <td key={item.y+"-"+item.m+"-"+item.d} onClick={function(){if(isCur)openAttEdit(e.id,item.d);}}
+                        style={{padding:"3px",borderBottom:"1px solid "+C.border,borderRight:"1px solid "+C.border,verticalAlign:"top",cursor:isCur?"pointer":"default"}}>
+                        <div style={{borderRadius:6,padding:"4px 3px",textAlign:"center",background:td?C.accent+"14":wk?C.red+"06":"transparent",border:td?"1px solid "+C.accent+"33":"1px solid transparent",minWidth:64}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3,marginBottom:2}}><ShiftBadge type={sv} size={18}/>{sv!=="休み"&&<span style={{fontSize:7,color:(SHIFT_DEF[sv]||{}).color,fontWeight:600}}>{sv}</span>}</div>
+                          {inT&&<div style={{fontSize:8,color:C.green,lineHeight:1.4}}>{inT}〜{outT||"…"}</div>}
+                          {net!==null&&<div style={{fontSize:8,color:C.yellow,fontWeight:700}}>{fmtMin(net)}</div>}
+                          {rec.status&&<div style={{fontSize:7,color:so.color,fontWeight:700}}>{rec.status}</div>}
+                          {rec.register&&<div style={{fontSize:7,color:"#F9A825",fontWeight:700}}>🏧</div>}
+                          {sv==="休み"&&!inT&&<div style={{fontSize:8,color:C.dim}}>休</div>}
+                        </div>
+                      </td>
+                    );
+                  });
+                  return(<tr key={e.id}><td style={stickyTd(ei)}>{e.name}</td>{cells}<td style={{padding:"6px 8px",textAlign:"center",borderBottom:"1px solid "+C.border,fontWeight:700,color:total>0?C.yellow:C.dim,fontSize:12,background:C.panel,whiteSpace:"nowrap"}}>{total>0?fmtMin(total):"－"}</td></tr>);
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════
+  // ⑧ 全員集計（店長）
+  // ══════════════════════════════════════
+  function AllSummaryTab() {
+    var nyM=pM===11?0:pM+1,nyY=pM===11?pY+1:pY;
+    var rows=EMPLOYEES.map(function(emp){
+      var workDays=0,totalMin=0,overtimeMin=0,registerC=0,holidayC=0,absC=0,paidC=0,memos=[];
+      periodDays.forEach(function(item){
+        var isCur=item.y===YEAR&&item.m===MONTH;
+        var sv=isCur?(shifts[emp.id][item.d]||"休み"):(getIsWE(item.y,item.m,item.d)?"休み":"早番");
+        if(sv==="休み"&&!isCur) return;
+        if(!isCur) return;
+        var rec=att[emp.id][item.d]||{};
+        var net=calcNet(entryTime(rec.in),entryTime(rec.out),entryTime(rec.bs),entryTime(rec.be));
+        if(net){workDays++;totalMin+=net;overtimeMin+=calcOvertime(net);}
+          if(rec.status==="有給") paidC++;
+        if(rec.status==="欠勤") absC++;
+        if(rec.status==="休日出勤") holidayC++;
+        if(rec.register) registerC++;
+        if(rec.memo) memos.push(item.m+1+"/"+item.d+": "+rec.memo);
+      });
+      return{emp:emp,workDays:workDays,totalMin:totalMin,overtimeMin:overtimeMin,registerC:registerC,holidayC:holidayC,absC:absC,paidC:paidC,memos:memos};
+    });
+
+    function downloadCSV(emp){
+      var hdr=["日付","曜日","シフト","出勤","退勤","休憩開始","休憩終了","休憩","状態","コメント"];
+      var dataRows=[],totalMin2=0;
+      periodDays.forEach(function(item){
+        var isCur=item.y===YEAR&&item.m===MONTH;
+        var sv=isCur?(shifts[emp.id][item.d]||"休み"):"休み";
+        var rec=isCur?(att[emp.id][item.d]||{}):{};
+        var net=calcNet(entryTime(rec.in),entryTime(rec.out),entryTime(rec.bs),entryTime(rec.be));
+        if(net) totalMin2+=net;
+        var bt=isCur?rec.breakType:null;
+        var breakDisp=(!isCur||!entryTime(rec.in))?"":bt==="0"?"なし":bt==="60"?"1:00":"0:45";
+        dataRows.push([item.m+1+"/"+item.d,getDayName(item.y,item.m,item.d),sv,entryTime(rec.in),entryTime(rec.out),entryTime(rec.bs),entryTime(rec.be),breakDisp,rec.status||"",rec.memo||""]);
+      });
+      dataRows.push(["","","","","","","","","合計",fmtMin(totalMin2)]);
+      var csv=[hdr].concat(dataRows).map(function(r){return r.map(function(cell){var cs=String(cell).replace(/"/g,"\"\"");return "\""+cs+"\"";}).join(",");}).join("\n");
+      var blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement("a");
+      a.href=url;a.download=emp.name+"_勤怠_"+pY+"年"+String(pM+1)+"月.csv";a.click();URL.revokeObjectURL(url);
+      showToast(emp.name+" のCSVをダウンロードしました");
+    }
+
+    return(
+      <div>
+        <div style={cardS}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
+            <button onClick={function(){var m=pM-1,y=pY;if(m<0){m=11;y--;}setPM(m);setPY(y);}} style={{padding:"5px 13px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>‹</button>
+            <span style={{fontWeight:800,fontSize:14,color:C.accent}}>{pY}年{pM+1}月16日 〜 {nyY}年{nyM+1}月15日</span>
+            <button onClick={function(){var m=pM+1,y=pY;if(m>11){m=0;y++;}setPM(m);setPY(y);}} style={{padding:"5px 13px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>›</button>
+          </div>
+          <button onClick={function(){EMPLOYEES.forEach(function(emp,i){setTimeout(function(){downloadCSV(emp);},i*300);});}} style={{padding:"9px 22px",borderRadius:8,border:"none",cursor:"pointer",background:C.green,color:"#0D1117",fontFamily:"inherit",fontSize:13,fontWeight:700}}>📥 全員CSVダウンロード</button>
+        </div>
+        {rows.map(function(r){return(
+          <div key={r.emp.id} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:20,marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14,borderBottom:"1px solid "+C.border,paddingBottom:12}}>
+              <div style={{width:40,height:40,borderRadius:"50%",background:C.orange+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,color:C.orange}}>{r.emp.name[0]}</div>
+              <div style={{flex:1}}><div style={{fontWeight:800,fontSize:16}}>{r.emp.name}</div><div style={{fontSize:11,color:C.dim}}>{r.emp.type} · {r.emp.hours}h</div></div>
+              <button onClick={function(){downloadCSV(r.emp);}} style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",background:C.panel,color:C.dim,fontFamily:"inherit",fontSize:12}}>📥 CSV</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(95px,1fr))",gap:8,marginBottom:r.memos.length>0?14:0}}>
+              {[{label:"出勤日数",val:r.workDays+"日",color:C.green},{label:"実働時間",val:fmtMin(r.totalMin),color:C.accent},{label:"残業時間",val:r.overtimeMin>0?fmtOT(r.overtimeMin):"なし",color:C.orange},{label:"レジ締め",val:r.registerC+"回",color:"#F9A825"},{label:"有給",val:r.paidC+"日",color:"#34D399"},{label:"休日出勤",val:r.holidayC+"回",color:"#A78BFA"},{label:"欠勤",val:r.absC+"日",color:C.red}].map(function(s){return(<div key={s.label} style={{background:C.panel,borderRadius:8,padding:"10px 12px",textAlign:"center"}}><div style={{fontSize:10,color:C.dim,marginBottom:3}}>{s.label}</div><div style={{fontSize:16,fontWeight:800,color:s.color}}>{s.val}</div></div>);})}
+            </div>
+            {r.memos.length>0&&<div style={{background:C.panel,borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:10,color:C.dim,marginBottom:6}}>コメント履歴</div>{r.memos.map(function(m,mi){return <div key={mi} style={{fontSize:11,color:C.purple,marginBottom:3}}>📝 {m}</div>;})}</div>}
+          </div>
+        );})}
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════
+  // モーダル類
+  // ══════════════════════════════════════
+  function ShiftPopover() {
+    if(!editShift) return null;
+    var emp=EMPLOYEES.find(function(e){return e.id===editShift.empId;});
+    var wr=wishes[editShift.empId][editShift.day]||{shift:"早番",note:""};
+    var wishDef=SHIFT_DEF[wr.shift]||{};
+    return(
+      <><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:99}} onClick={function(){setEditShift(null);}}/><div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:C.card,border:"1px solid "+C.accent+"44",borderRadius:14,padding:28,zIndex:100,width:280}}>
+        <div style={{fontWeight:800,fontSize:15,color:C.accent,marginBottom:4}}>{emp&&emp.name}</div>
+        <div style={{fontSize:12,color:C.dim,marginBottom:4}}>{MONTH+1}月{editShift.day}日（{getDayName(YEAR,MONTH,editShift.day)}）</div>
+        <div style={{fontSize:11,color:C.dim,marginBottom:4}}>希望: <span style={{color:wishDef.color,fontWeight:700}}>{getSym(wr.shift)} {wr.shift}</span></div>
+        {wr.note&&<div style={{fontSize:11,color:C.yellow,marginBottom:12,padding:"6px 10px",background:C.yellow+"11",borderRadius:6,borderLeft:"3px solid "+C.yellow}}>📝 {wr.note}</div>}
+        <div style={{display:"grid",gap:8}}>
+          {SHIFT_TYPES.map(function(t){var def=SHIFT_DEF[t]||{},cur=shifts[editShift.empId][editShift.day];return(<button key={t} onClick={function(){doSetShift(editShift.empId,editShift.day,t);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:"2px solid "+(def.border||"#444"),borderRadius:8,background:def.bg||"#eee",color:def.color||"#555",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><ShiftBadge type={t} size={20}/><span>{t}</span><span style={{fontSize:10,color:"#888",marginLeft:"auto"}}>{def.time}</span>{cur===t&&<span style={{color:C.accent}}>✓</span>}</button>);})}
+        </div>
+        <button onClick={function(){setEditShift(null);}} style={{marginTop:12,width:"100%",padding:"8px",borderRadius:8,border:"1px solid "+C.border,background:"transparent",color:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:13}}>閉じる</button>
+      </div></>
+    );
+  }
+
+  function AttModal() {
+    if(!editAtt) return null;
+    var emp=EMPLOYEES.find(function(e){return e.id===editAtt.eid;});
+    var st=(shifts[editAtt.eid]&&shifts[editAtt.eid][editAtt.day])||"休み";
+    var stDef=SHIFT_DEF[st]||{};
+    return(
+      <><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",zIndex:99}} onClick={function(){setEditAtt(null);}}/><div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:C.card,border:"1px solid "+C.accent+"44",borderRadius:14,padding:28,zIndex:100,width:440,maxWidth:"90vw"}}>
+        <div style={{marginBottom:18}}>
+          <div style={{fontWeight:800,fontSize:16,color:C.accent}}>{emp&&emp.name}</div>
+          <div style={{fontSize:12,color:C.dim,marginTop:4,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{MONTH+1}月{editAtt.day}日（{getDayName(YEAR,MONTH,editAtt.day)}）<ShiftBadge type={st} size={20}/><span style={{color:stDef.color,fontWeight:700}}>{st} {stDef.time}</span></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
+          {[["出勤時刻","in"],["退勤時刻","out"],["休憩開始","bs"],["休憩終了","be"]].map(function(pair){return(<div key={pair[1]} style={{marginBottom:12}}><div style={{fontSize:10,color:C.dim,marginBottom:3,letterSpacing:1}}>{pair[0]}</div><input type="time" defaultValue={editForm[pair[1]]||""} onInput={function(e){var k=pair[1];setEditForm(function(p){var n=Object.assign({},p);n[k]=e.target.value;return n;});}} style={inputS}/></div>);})}
+        </div>
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:10,color:C.dim,marginBottom:6,letterSpacing:1}}>勤怠ステータス</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{STATUS_LIST.map(function(s){var active=(editForm.status||"")===s.key;return(<button key={s.key} onClick={function(){setEditForm(function(p){return Object.assign({},p,{status:s.key});});}} style={{padding:"5px 12px",borderRadius:20,border:"2px solid "+(active?s.border:C.border),background:active?s.border+"22":"transparent",color:active?s.color:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:active?700:400}}>{s.label}</button>);})}</div>
+        </div>
+        <div style={{marginBottom:12}}><div style={{fontSize:10,color:C.dim,marginBottom:3,letterSpacing:1}}>コメント</div><textarea defaultValue={editForm.memo||""} rows={2} placeholder="遅刻理由・特記事項など" onInput={function(e){setEditForm(function(p){return Object.assign({},p,{memo:e.target.value});});}} style={{background:C.panel,border:"1px solid "+C.border,borderRadius:6,padding:"7px 10px",color:C.text,fontFamily:"inherit",fontSize:13,width:"100%",boxSizing:"border-box",resize:"vertical",lineHeight:1.6}}/></div>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={saveAttEdit} style={{padding:"10px 0",width:"100%",borderRadius:8,border:"none",cursor:"pointer",background:C.accent,color:"#0D1117",fontFamily:"inherit",fontSize:14,fontWeight:800}}>保存する</button>
+          <button onClick={function(){setEditAtt(null);}} style={{padding:"10px 0",width:"100%",borderRadius:8,border:"none",cursor:"pointer",background:C.border,color:C.text,fontFamily:"inherit",fontSize:14}}>キャンセル</button>
+        </div>
+      </div></>
+    );
+  }
+
+  function EditRecModal() {
+    if(!editRec) return null;
+    var fieldLabels={in:"出勤",out:"退勤",bs:"休憩開始",be:"休憩終了"};
+    var entry=att[editRec.empId][editRec.day][editRec.field];
+    var log=entry?(entry.editLog||[]):[];
+    return(
+      <><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",zIndex:99}} onClick={function(){setEditRec(null);}}/><div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:C.card,border:"1px solid "+C.orange+"55",borderRadius:14,padding:28,zIndex:100,width:320,maxWidth:"90vw"}}>
+        <div style={{fontWeight:800,fontSize:15,color:C.orange,marginBottom:4}}>打刻修正 — {fieldLabels[editRec.field]}</div>
+        <div style={{fontSize:11,color:C.dim,marginBottom:16}}>{(EMPLOYEES.find(function(e){return e.id===editRec.empId;})||{}).name} / {MONTH+1}月{editRec.day}日</div>
+        {entry&&entry.loc&&<div style={{fontSize:11,color:C.dim,marginBottom:10,padding:"6px 10px",background:C.panel,borderRadius:6}}>📍 打刻時の位置: {entry.loc}</div>}
+        <div style={{fontSize:10,color:C.dim,marginBottom:5,letterSpacing:1}}>修正後の時刻</div>
+        <input type="time" defaultValue={editTime} onInput={function(e){setEditTime(e.target.value);}} style={{background:C.panel,border:"1px solid "+C.border,borderRadius:6,padding:"10px 14px",color:C.text,fontFamily:"inherit",fontSize:18,width:"100%",boxSizing:"border-box",marginBottom:16}}/>
+        {log.length>0&&<div style={{background:C.panel,borderRadius:6,padding:"8px 10px",marginBottom:16}}><div style={{fontSize:9,color:C.dim,marginBottom:5,letterSpacing:1}}>修正履歴</div>{log.map(function(l,li){return <div key={li} style={{fontSize:10,color:C.orange,marginBottom:2}}>{l.before} → 修正（{l.at}）</div>;})}</div>}
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={saveEditRec} style={{flex:1,padding:"10px 0",borderRadius:8,border:"none",cursor:"pointer",background:C.orange,color:"#0D1117",fontFamily:"inherit",fontSize:14,fontWeight:800}}>修正を保存</button>
+          <button onClick={function(){setEditRec(null);}} style={{flex:1,padding:"10px 0",borderRadius:8,border:"none",cursor:"pointer",background:C.border,color:C.text,fontFamily:"inherit",fontSize:14}}>キャンセル</button>
+        </div>
+      </div></>
+    );
+  }
+
+  // ══════════════════════════════════════
+  // ログインモーダル
+  // ══════════════════════════════════════
+  function LoginModal() {
+    return(
+      <PasswordModal
+        show={showLogin}
+        managerPw={MANAGER_PW}
+        onSuccess={function(){setIsManager(true);setShowLogin(false);showToast("店長としてログインしました 👑");}}
+        onClose={function(){setShowLogin(false);}}
+      />
+    );
+  }
+
+  // ══════════════════════════════════════
+  // レンダー
+  // ══════════════════════════════════════
+  var currentTabs=isManager?staffTabs.concat(managerTabs):staffTabs;
+
+  return(
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif",color:C.text}}>
+      <style>{"button:hover{opacity:.82;} textarea{outline:none;} input{outline:none;}"}</style>
+
+      <header style={{background:C.panel,borderBottom:"1px solid "+C.border,padding:"0 20px",height:58,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+            <span style={{fontSize:11,color:C.dim}}>🎩</span>
+            <span style={{fontFamily:"Georgia,serif",fontWeight:700,fontSize:22,color:"#E6EDF3",letterSpacing:3}}>帽子屋 Flava</span>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <LiveClock style={{fontFamily:"monospace",fontSize:12,color:C.dim,letterSpacing:1}}/>
+          {isManager
+            ?<button onClick={function(){setIsManager(false);setTab("punch");}} style={{padding:"4px 14px",borderRadius:20,border:"1px solid "+C.orange,background:C.orange+"22",color:C.orange,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700}}>👑 店長 / ログアウト</button>
+            :<button onClick={function(){setShowLogin(true);setPwInput("");setPwError(false);}} style={{padding:"4px 14px",borderRadius:20,border:"1px solid "+C.border,background:"transparent",color:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700}}>🔐 店長ログイン</button>
+          }
+        </div>
+      </header>
+
+      <nav style={{display:"flex",background:C.panel,borderBottom:"1px solid "+C.border,padding:"0 16px",overflowX:"auto"}}>
+        {currentTabs.map(function(n){
+          var active=tab===n.key;
+          var isManagerTab=managerTabs.some(function(m){return m.key===n.key;});
+          var color=isManagerTab?C.orange:C.accent;
+          var unreadCount=n.badge?notifications.filter(function(x){return !x.read;}).length:0;
+          return(
+            <button key={n.key} onClick={function(){setTab(n.key);}} style={{padding:"12px 16px",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:active?700:500,color:active?color:C.dim,borderBottom:active?"2px solid "+color:"2px solid transparent",background:"none",whiteSpace:"nowrap",position:"relative"}}>
+              {n.label}
+              {unreadCount>0&&<span style={{position:"absolute",top:6,right:2,background:C.orange,color:"#0D1117",borderRadius:"50%",width:16,height:16,fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{unreadCount}</span>}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div style={{padding:"20px",maxWidth:900,margin:"0 auto"}}>
+        {tab==="punch"  && <PunchTab/>}
+        {tab==="all"    && <AllTab/>}
+        {tab==="wish"   && <WishTab/>}
+        {tab==="mysum"  && <MySummaryTab/>}
+        {tab==="shift"  && isManager && <ShiftTab/>}
+        {tab==="pdf"    && isManager && <PdfTab/>}
+        {tab==="attend" && isManager && <AttendTab/>}
+        {tab==="allsum" && isManager && <AllSummaryTab/>}
+      </div>
+
+      <ShiftPopover/>
+      <AttModal/>
+      <EditRecModal/>
+      <LoginModal/>
+      {toast&&<div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:C.accent,color:"#0D1117",padding:"10px 26px",borderRadius:40,fontSize:12,fontWeight:700,zIndex:200,whiteSpace:"nowrap",maxWidth:"90vw",textAlign:"center"}}>{toast}</div>}
+    </div>
+  );
+}
+
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+</script>
+</body>
+</html>
