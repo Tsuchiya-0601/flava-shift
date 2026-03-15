@@ -52,4 +52,72 @@
 
   <div class="card">
     <h2>従業員登録</h2>
-    <input id="
+    <input id="name" placeholder="名前">
+    <input id="email" placeholder="メール">
+    <button onclick="addEmployee()">登録</button>
+  </div>
+
+  <div class="card">
+    <h2>従業員一覧</h2>
+    <div id="list">読み込み中...</div>
+  </div>
+
+  <script>
+    const supabaseClient = supabase.createClient(
+      "https://njfczsystzfcqfcnmtkq.supabase.co",
+      "sb_publishable_bLly_Xbs0DqycEmiUS259w_ZVS6EZUb"
+    );
+
+    async function addEmployee() {
+      const name = document.getElementById("name").value.trim();
+      const email = document.getElementById("email").value.trim();
+
+      if (!name || !email) {
+        alert("名前とメールを入れてください");
+        return;
+      }
+
+      const { error } = await supabaseClient
+        .from("employees")
+        .insert([{ name: name, email: email }]);
+
+      if (error) {
+        alert("登録失敗: " + error.message);
+        return;
+      }
+
+      alert("登録成功！");
+      document.getElementById("name").value = "";
+      document.getElementById("email").value = "";
+      loadEmployees();
+    }
+
+    async function loadEmployees() {
+      const { data, error } = await supabaseClient
+        .from("employees")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        document.getElementById("list").innerHTML = "読み込み失敗: " + error.message;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        document.getElementById("list").innerHTML = "まだ従業員がいません";
+        return;
+      }
+
+      let html = "";
+      data.forEach(e => {
+        html += `<div>${e.name} (${e.email})</div>`;
+      });
+
+      document.getElementById("list").innerHTML = html;
+    }
+
+    loadEmployees();
+  </script>
+
+</body>
+</html>
