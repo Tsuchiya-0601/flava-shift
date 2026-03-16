@@ -67,7 +67,6 @@
         .then(function(res) {
           if (res.error) console.log('wish save error:', res.error.message);
         });
-    };
 
     // 希望を読み込む
     window.loadWishes = function(year, month, callback) {
@@ -77,7 +76,6 @@
         .then(function(res) {
           if (res.data) callback(res.data);
         });
-    };
 
     // シフトを保存
     window.saveShift = function(empId, year, month, day, shift) {
@@ -90,7 +88,6 @@
     .then(function(res) {
       if (res.error) console.log('shift save error:', res.error.message);
     });
-};
 
     // シフトを読み込む
     window.loadShifts = function(year, month, callback) {
@@ -100,7 +97,6 @@
         .then(function(res) {
           if (res.data) callback(res.data);
         });
-    };
 
     // 打刻を保存
     window.saveRecord = function(empId, day, month, year, rec) {
