@@ -17,7 +17,7 @@
     const db = createClient("https://njfczsystzfcqfcnmtkq.supabase.co", "sb_publishable_bLly_Xbs0DqycEmiUS259w_ZVS6EZUb");
 
     // 従業員UUIDをキャッシュ
-    window._empUUIDs = {};
+    window._employee_id: empId = {};
 
     // 起動時に従業員データ読み込み
     db.from('employees').select('id, name').order('id').then(function(res) {
