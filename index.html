@@ -98,7 +98,13 @@
 
   db.from('shifts')
     .upsert(
-      { employee_id: empUUID, year: year, month: month, day: day, shift: shift },
+      {
+        employee_id: empUUID,
+        year: year,
+        month: month,
+        day: day,
+        shift: shift
+      },
       { onConflict: 'employee_id,year,month,day' }
     )
     .then(function(res) {
