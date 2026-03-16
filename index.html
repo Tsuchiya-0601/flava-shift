@@ -423,8 +423,11 @@ function App() {
   var shiftsS=useState(initShifts); var shifts=shiftsS[0]; var setShifts=shiftsS[1];
   var attS=useState(initAtt); var att=attS[0]; var setAtt=attS[1];
 
-  var pYS=useState(MONTH===0?YEAR-1:YEAR); var pY=pYS[0]; var setPY=pYS[1];
-  var pMS=useState(MONTH===0?11:MONTH-1); var pM=pMS[0]; var setPM=pMS[1];
+  var basePeriodY = TODAY >= 16 ? YEAR : (MONTH === 0 ? YEAR - 1 : YEAR);
+var basePeriodM = TODAY >= 16 ? MONTH : (MONTH === 0 ? 11 : MONTH - 1);
+
+var pYS=useState(basePeriodY); var pY=pYS[0]; var setPY=pYS[1];
+var pMS=useState(basePeriodM); var pM=pMS[0]; var setPM=pMS[1];
   var pdfYS=useState(YEAR); var pdfY=pdfYS[0]; var setPdfY=pdfYS[1];
   var pdfMS=useState(MONTH); var pdfM=pdfMS[0]; var setPdfM=pdfMS[1];
 
