@@ -87,17 +87,18 @@
   };
 
   // シフトを保存
-  window.saveShift = function(empId, year, month, day, shift) {
-    console.log('saving shift:', empId, year, month, day, shift);
-    db.from('shifts')
-      .upsert(
-        { employee_id: empId, year: year, month: month, day: day, shift: shift },
-        { onConflict: 'employee_id,year,month,day' }
-      )
-      .then(function(res) {
-        if (res.error) console.log('shift save error:', res.error.message);
-      });
-  };
+ window.saveShift = function(empId, year, month, day, shift) {
+  console.log('saving shift:', empId, year, month, day, shift);
+  db.from('shifts')
+    .upsert(
+      { employee_id: empId, year: year, month: month, day: day, shift: shift },
+      { onConflict: 'employee_id,year,month,day' }
+    )
+    .then(function(res) {
+      if (res.error) console.log('shift save error:', res.error.message);
+      else console.log('shift saved:', empId, year, month, day, shift);
+    });
+};
 
   // シフトを読み込む
   window.loadShifts = function(year, month, callback) {
@@ -540,12 +541,13 @@ function App() {
   }
 
   // ── シフト ──
- function autoFill() {
+function autoFill() {
   var types = ["早番","遅番","中番","早番","中番"], next = {};
   var wishKey = shiftY + "-" + shiftM;
 
   EMPLOYEES.forEach(function(e, ei) {
     next[e.id] = {};
+
     for (var d = 1; d <= getDim(shiftY, shiftM); d++) {
       var wishObj = (((wishes[e.id] || {})[wishKey] || {})[d]) || {};
       var wishShift = wishObj.shift || "早番";
@@ -560,7 +562,18 @@ function App() {
   });
 
   setShifts(next);
-  showToast("希望を反映してシフトを自動作成しました ✨");
+
+  // ここでSupabaseにも保存
+  EMPLOYEES.forEach(function(e) {
+    for (var d = 1; d <= getDim(shiftY, shiftM); d++) {
+      var sv = next[e.id] && next[e.id][d];
+      if (sv && window.saveShift) {
+        window.saveShift(e.id, shiftY, shiftM + 1, d, sv);
+      }
+    }
+  });
+
+  showToast("希望を反映してシフトを自動作成して保存しました ✨");
 }
 
   // ── 打刻 ──
