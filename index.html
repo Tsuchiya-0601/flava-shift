@@ -1241,7 +1241,7 @@ function autoFill() {
                   var total=0;
                   var cells=periodDays.map(function(item){
                     var isCur=item.y===YEAR&&item.m===MONTH;
-                    var sv=isCur?(shifts[e.id][item.d]||"休み"):(getIsWE(item.y,item.m,item.d)?"休み":["早番","遅番","中番"][(ei+item.d)%3]);
+                    var sv=(shifts[e.id]&&shifts[e.id][item.d])||"休み";
                     var rec=isCur?(att[e.id][item.d]||{}):{};
                     var net=calcNet(entryTime(rec.in),entryTime(rec.out),entryTime(rec.bs),entryTime(rec.be));
                     if(net) total+=net;
