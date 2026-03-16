@@ -20,10 +20,8 @@
     "sb_publishable_bLly_Xbs0DqycEmiUS259w_ZVS6EZUb"
   );
 
-  // 従業員IDキャッシュ
   window._empUUIDs = {};
 
-  // 起動時に従業員データ読み込み
   db.from('employees').select('id, name').order('id').then(function(res) {
     if (res.data) {
       var nameMap = {
@@ -43,10 +41,12 @@
     }
   });
 
-  // 打刻データを読み込む
+  // ✅ 修正①: endDateを月末の実日数で正しく計算
   window.loadAttendance = function(year, month, callback) {
-    var startDate = year + '-' + String(month + 1).padStart(2, '0') + '-01';
-    var endDate   = year + '-' + String(month + 1).padStart(2, '0') + '-31';
+    var m1 = String(month + 1).padStart(2, '0');
+    var lastDay = new Date(year, month + 1, 0).getDate();
+    var startDate = year + '-' + m1 + '-01';
+    var endDate   = year + '-' + m1 + '-' + String(lastDay).padStart(2, '0');
     db.from('attendance').select('*')
       .gte('date', startDate)
       .lte('date', endDate)
@@ -55,7 +55,6 @@
       });
   };
 
-  // 希望を保存
   window.saveWish = function(empId, year, month, day, shift, note) {
     var payload = {
       employee_id: empId,
@@ -65,19 +64,14 @@
       shift: shift,
       note: note || ''
     };
-
     db.from('shift_wishes')
       .upsert(payload, { onConflict: 'employee_id,year,month,day' })
       .then(function(res) {
-        if (res.error) {
-          console.log('wish save error:', res.error.message);
-        } else {
-          console.log('wish saved:', payload);
-        }
+        if (res.error) console.log('wish save error:', res.error.message);
+        else console.log('wish saved:', payload);
       });
   };
 
-  // 希望を読み込む
   window.loadWishes = function(year, month, callback) {
     db.from('shift_wishes').select('*')
       .eq('year', year)
@@ -87,28 +81,19 @@
       });
   };
 
-  // シフトを保存
- window.saveShift = function(empId, year, month, day, shift) {
-  console.log('saving shift:', empId, year, month, day, shift);
+  window.saveShift = function(empId, year, month, day, shift) {
+    console.log('saving shift:', empId, year, month, day, shift);
+    db.from('shifts')
+      .upsert(
+        { employee_id: empId, year: year, month: month, day: day, shift: shift },
+        { onConflict: 'employee_id,year,month,day' }
+      )
+      .then(function(res) {
+        if (res.error) console.log('shift save error:', res.error.message);
+        else console.log('shift saved:', empId, year, month, day, shift);
+      });
+  };
 
-  db.from('shifts')
-    .upsert(
-      {
-        employee_id: empId,
-        year: year,
-        month: month,
-        day: day,
-        shift: shift
-      },
-      { onConflict: 'employee_id,year,month,day' }
-    )
-    .then(function(res) {
-      if (res.error) console.log('shift save error:', res.error.message);
-      else console.log('shift saved:', empId, year, month, day, shift);
-    });
-};
-
-  // シフトを読み込む
   window.loadShifts = function(year, month, callback) {
     db.from('shifts').select('*')
       .eq('year', year)
@@ -118,7 +103,7 @@
       });
   };
 
-  // 打刻を保存
+  // ✅ 修正②: monthは0始まりで受け取り、内部で+1して日付文字列を作る（呼び出し側と統一）
   window.saveRecord = function(empId, day, month, year, rec) {
     var date = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
     var payload = {
@@ -134,15 +119,14 @@
       register:    rec.register || false,
       confirmed:   rec.confirmed || false,
       loc_in:      rec.in ? (rec.in.loc || '') : ''
-   };
-
-db.from('attendance')
-  .upsert(payload, { onConflict: 'employee_id,date' })
-  .then(function(res) {
-    if (res.error) console.log('save error:', res.error.message);
-    else console.log('saved:', date);
-  });
-};
+    };
+    db.from('attendance')
+      .upsert(payload, { onConflict: 'employee_id,date' })
+      .then(function(res) {
+        if (res.error) console.log('save error:', res.error.message);
+        else console.log('saved:', date);
+      });
+  };
 </script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -170,9 +154,6 @@ window.addEventListener('error', function(e){
 <script type="text/babel" data-presets="react">
 const { useState, useEffect } = React;
 
-// ═══════════════════════════════════════
-// 定数
-// ═══════════════════════════════════════
 const EMPLOYEES = [
   { id: 1, name: "渡邊 なつき", type: "社員",   hours: 8 },
   { id: 2, name: "小河 滝子",   type: "社員",   hours: 8 },
@@ -220,9 +201,6 @@ const C = {
   yellow:"#B8860B", purple:"#7B5EA7", orange:"#C17A3A",
 };
 
-// ═══════════════════════════════════════
-// ユーティリティ
-// ═══════════════════════════════════════
 function getSym(t) { return (SHIFT_DEF[t]&&SHIFT_DEF[t].symbol)||t; }
 function getDim(y,m) { return new Date(y,m+1,0).getDate(); }
 function getDayName(y,m,d) { return ["日","月","火","水","木","金","土"][new Date(y,m,d).getDay()]; }
@@ -260,7 +238,6 @@ function initWishes() {
   var data={};
   EMPLOYEES.forEach(function(e) {
     data[e.id]={};
-    // 今月と来月分を初期化
     for(var mo=0;mo<=1;mo++){
       var y=MONTH+mo>11?YEAR+1:YEAR;
       var m=MONTH+mo>11?0:MONTH+mo;
@@ -290,9 +267,6 @@ function initAtt() {
   return data;
 }
 
-// ═══════════════════════════════════════
-// コンポーネント
-// ═══════════════════════════════════════
 function ShiftBadge(props) {
   var t=props.type, sz=props.size||24, def=SHIFT_DEF[t]||{};
   return (
@@ -323,10 +297,6 @@ function getLocation(cb) {
   );
 }
 
-// ═══════════════════════════════════════
-// メインアプリ
-// ═══════════════════════════════════════
-// ── 独立モーダル: 希望備考入力 ──────────────────
 function WishNoteModal(props) {
   var day=props.day, empId=props.empId, initialNote=props.initialNote;
   var noteS=useState(initialNote||""); var note=noteS[0]; var setNote=noteS[1];
@@ -358,7 +328,6 @@ function WishNoteModal(props) {
   );
 }
 
-// ── 独立モーダル: 店長パスワード ──────────────────
 function PasswordModal(props) {
   var pwS=useState(""); var pw=pwS[0]; var setPw=pwS[1];
   var errS=useState(false); var err=errS[0]; var setErr=errS[1];
@@ -392,28 +361,23 @@ function PasswordModal(props) {
 }
 
 function App() {
-  // ── 認証 ──
   var isManagerS=useState(false); var isManager=isManagerS[0]; var setIsManager=isManagerS[1];
   var showLoginS=useState(false); var showLogin=showLoginS[0]; var setShowLogin=showLoginS[1];
   var pwInputS=useState(""); var pwInput=pwInputS[0]; var setPwInput=pwInputS[1];
   var pwErrorS=useState(false); var pwError=pwErrorS[0]; var setPwError=pwErrorS[1];
 
-  // ── 画面 ──
   var tabS=useState("punch"); var tab=tabS[0]; var setTab=tabS[1];
   var selEmpS=useState(EMPLOYEES[0].id); var selEmp=selEmpS[0]; var setSelEmp=selEmpS[1];
 
-  // ── データ ──
   var wishesS=useState(initWishes); var wishes=wishesS[0]; var setWishes=wishesS[1];
   var shiftsS=useState(initShifts); var shifts=shiftsS[0]; var setShifts=shiftsS[1];
   var attS=useState(initAtt); var att=attS[0]; var setAtt=attS[1];
 
-  // ── 期間 ──
   var pYS=useState(MONTH===0?YEAR-1:YEAR); var pY=pYS[0]; var setPY=pYS[1];
   var pMS=useState(MONTH===0?11:MONTH-1); var pM=pMS[0]; var setPM=pMS[1];
   var pdfYS=useState(YEAR); var pdfY=pdfYS[0]; var setPdfY=pdfYS[1];
   var pdfMS=useState(MONTH); var pdfM=pdfMS[0]; var setPdfM=pdfMS[1];
 
-  // ── モーダル ──
   var wishEditS=useState(null); var wishEdit=wishEditS[0]; var setWishEdit=wishEditS[1];
   var wishYS=useState(YEAR); var wishY=wishYS[0]; var setWishY=wishYS[1];
   var wishMS=useState(MONTH); var wishM=wishMS[0]; var setWishM=wishMS[1];
@@ -434,7 +398,6 @@ function App() {
 
   function showToast(msg){setToast(msg);setTimeout(function(){setToast(null);},2400);}
 
-  // 希望データ読み込み
   useEffect(function(){
     if(!window.loadWishes) return;
     window.loadWishes(wishY, wishM+1, function(rows){
@@ -457,7 +420,6 @@ function App() {
     });
   },[wishY,wishM]);
 
-  // シフトデータ読み込み
   useEffect(function(){
     if(!window.loadShifts) return;
     window.loadShifts(shiftY, shiftM+1, function(rows){
@@ -478,7 +440,6 @@ function App() {
     });
   },[shiftY,shiftM]);
 
-  // 起動時にSupabaseからデータ読み込み
   useEffect(function(){
     if(!window.loadAttendance) return;
     window.loadAttendance(YEAR, MONTH, function(rows){
@@ -486,15 +447,11 @@ function App() {
       setAtt(function(prev){
         var next=Object.assign({},prev);
         rows.forEach(function(row){
-          // employee_idからidを逆引き
           var empId=null;
           Object.keys(window._empUUIDs||{}).forEach(function(k){
             if(window._empUUIDs[k]===row.employee_id) empId=parseInt(k);
           });
-          // int8の場合は直接比較
-          if(!empId){
-            empId=row.employee_id;
-          }
+          if(!empId) empId=row.employee_id;
           if(!next[empId]) return;
           var day=parseInt(row.date.split('-')[2]);
           next[empId]=Object.assign({},next[empId]);
@@ -516,13 +473,11 @@ function App() {
     });
   },[]);
 
-  // ── 認証 ──
   function tryLogin() {
     if(pwInput===MANAGER_PW){setIsManager(true);setShowLogin(false);setPwInput("");showToast("店長としてログインしました 👑");}
     else{setPwError(true);}
   }
 
-  // ── 希望 ──
   function cycleWish(eid,d) {
     var key=wishY+"-"+wishM;
     setWishes(function(p){
@@ -548,53 +503,40 @@ function App() {
     });
   }
 
-  // ── シフト ──
   function doSetShift(eid,d,v) {
-  setShifts(function(p){
-    var e = Object.assign({}, p[eid]);
-    e[d] = v;
-    var n = Object.assign({}, p);
-    n[eid] = e;
-    return n;
-  });
-  setEditShift(null);
-}
-function autoFill() {
-  var types = ["早番","遅番","中番","早番","中番"], next = {};
-  var wishKey = shiftY + "-" + shiftM;
+    setShifts(function(p){
+      var e = Object.assign({}, p[eid]);
+      e[d] = v;
+      var n = Object.assign({}, p);
+      n[eid] = e;
+      return n;
+    });
+    setEditShift(null);
+  }
 
-  EMPLOYEES.forEach(function(e, ei) {
-    next[e.id] = {};
-
-    for (var d = 1; d <= getDim(shiftY, shiftM); d++) {
-      var wishObj = (((wishes[e.id] || {})[wishKey] || {})[d]) || {};
-      var wishShift = wishObj.shift || "早番";
-
-      next[e.id][d] =
-        wishShift === "休み"
-          ? "休み"
-          : (["早番","遅番","中番"].indexOf(wishShift) !== -1
-              ? wishShift
-              : types[(ei + d) % 5]);
-    }
-  });
-
-  setShifts(next);
-
-  // ここでSupabaseにも保存
-  EMPLOYEES.forEach(function(e) {
-    for (var d = 1; d <= getDim(shiftY, shiftM); d++) {
-      var sv = next[e.id] && next[e.id][d];
-      if (sv && window.saveShift) {
-        window.saveShift(e.id, shiftY, shiftM + 1, d, sv);
+  function autoFill() {
+    var types = ["早番","遅番","中番","早番","中番"], next = {};
+    var wishKey = shiftY + "-" + shiftM;
+    EMPLOYEES.forEach(function(e, ei) {
+      next[e.id] = {};
+      for (var d = 1; d <= getDim(shiftY, shiftM); d++) {
+        var wishObj = (((wishes[e.id] || {})[wishKey] || {})[d]) || {};
+        var wishShift = wishObj.shift || "早番";
+        next[e.id][d] =
+          wishShift === "休み" ? "休み"
+          : (["早番","遅番","中番"].indexOf(wishShift) !== -1 ? wishShift : types[(ei + d) % 5]);
       }
-    }
-  });
+    });
+    setShifts(next);
+    EMPLOYEES.forEach(function(e) {
+      for (var d = 1; d <= getDim(shiftY, shiftM); d++) {
+        var sv = next[e.id] && next[e.id][d];
+        if (sv && window.saveShift) window.saveShift(e.id, shiftY, shiftM + 1, d, sv);
+      }
+    });
+    showToast("希望を反映してシフトを自動作成して保存しました ✨");
+  }
 
-  showToast("希望を反映してシフトを自動作成して保存しました ✨");
-}
-
-  // ── 打刻 ──
   function punch(eid,day,field) {
     setLocLoad(true);
     var now=fmtNow();
@@ -607,23 +549,67 @@ function autoFill() {
         ea[day]=r;
         var n=Object.assign({},p);
         n[eid]=ea;
-        // Supabaseに保存
-        if(window.saveRecord) window.saveRecord(eid,day,MONTH,YEAR,ea[day]);
+        // ✅ 修正③: saveRecordにはMONTH(0始まり)を渡す（内部でmonth+1して日付を作るため）
+        if(window.saveRecord) window.saveRecord(eid, day, MONTH, YEAR, ea[day]);
         return n;
       });
       var L={in:"出勤",out:"退勤",bs:"休憩開始",be:"休憩終了"};
       showToast((EMPLOYEES.find(function(e){return e.id===eid;})||{}).name+" — "+L[field]+" "+now+"  📍"+loc);
     });
   }
-  function updateRec(eid,day,key,val) {
-    setAtt(function(p){var r=Object.assign({},p[eid][day]);r[key]=val;var ea=Object.assign({},p[eid]);ea[day]=r;var n=Object.assign({},p);n[eid]=ea;return n;});
-  }
-  function openAttEdit(eid,day){setEditAtt({eid:eid,day:day});setEditForm(Object.assign({},att[eid][day]));}
-  function saveAttEdit(){var eid=editAtt.eid,day=editAtt.day;setAtt(function(p){var ea=Object.assign({},p[eid]);ea[day]=Object.assign({},editForm);var n=Object.assign({},p);n[eid]=ea;return n;});setEditAtt(null);showToast("保存しました");}
-  function openEditRec(eid,day,field){var entry=att[eid][day][field];setEditRec({empId:eid,day:day,field:field});setEditTime(entry?entry.time:"");}
-  function saveEditRec(){var eid=editRec.empId,day=editRec.day,field=editRec.field,now=fmtNow();setAtt(function(p){var r=Object.assign({},p[eid][day]);var prev=r[field]||makeEntry("","");var log=(prev.editLog||[]).concat([{before:prev.time,at:now}]);r[field]={time:editTime,loc:prev.loc,edited:true,editLog:log};var ea=Object.assign({},p[eid]);ea[day]=r;var n=Object.assign({},p);n[eid]=ea;return n;});setEditRec(null);showToast("打刻を修正しました ✓");}
 
-  // ── スタイル ──
+  function updateRec(eid,day,key,val) {
+    setAtt(function(p){
+      var r=Object.assign({},p[eid][day]);
+      r[key]=val;
+      var ea=Object.assign({},p[eid]);
+      ea[day]=r;
+      var n=Object.assign({},p);
+      n[eid]=ea;
+      return n;
+    });
+  }
+
+  function openAttEdit(eid,day){setEditAtt({eid:eid,day:day});setEditForm(Object.assign({},att[eid][day]));}
+
+  // ✅ 修正④: saveAttEdit でも Supabase に保存する
+  function saveAttEdit(){
+    var eid=editAtt.eid, day=editAtt.day;
+    setAtt(function(p){
+      var ea=Object.assign({},p[eid]);
+      ea[day]=Object.assign({},editForm);
+      var n=Object.assign({},p);
+      n[eid]=ea;
+      // Supabaseに保存
+      if(window.saveRecord) window.saveRecord(eid, day, MONTH, YEAR, ea[day]);
+      return n;
+    });
+    setEditAtt(null);
+    showToast("保存しました");
+  }
+
+  function openEditRec(eid,day,field){var entry=att[eid][day][field];setEditRec({empId:eid,day:day,field:field});setEditTime(entry?entry.time:"");}
+
+  // ✅ 修正⑤: saveEditRec でも Supabase に保存する
+  function saveEditRec(){
+    var eid=editRec.empId, day=editRec.day, field=editRec.field, now=fmtNow();
+    setAtt(function(p){
+      var r=Object.assign({},p[eid][day]);
+      var prev=r[field]||makeEntry("","");
+      var log=(prev.editLog||[]).concat([{before:prev.time,at:now}]);
+      r[field]={time:editTime,loc:prev.loc,edited:true,editLog:log};
+      var ea=Object.assign({},p[eid]);
+      ea[day]=r;
+      var n=Object.assign({},p);
+      n[eid]=ea;
+      // Supabaseに保存
+      if(window.saveRecord) window.saveRecord(eid, day, MONTH, YEAR, ea[day]);
+      return n;
+    });
+    setEditRec(null);
+    showToast("打刻を修正しました ✓");
+  }
+
   var cardS={background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:18,marginBottom:18};
   var inputS={background:C.panel,border:"1px solid "+C.border,borderRadius:6,padding:"7px 10px",color:C.text,fontFamily:"inherit",fontSize:13,width:"100%",boxSizing:"border-box"};
   function empBtn(a){return{padding:"5px 14px",borderRadius:20,border:"1px solid "+(a?C.accent:C.border),background:a?C.accent+"22":"transparent",color:a?C.accent:C.dim,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:a?700:400};}
@@ -632,11 +618,10 @@ function autoFill() {
   function stickyTd(i){return{padding:"8px 14px",background:i%2===0?C.card:C.panel,fontWeight:700,fontSize:12,position:"sticky",left:0,zIndex:1,borderRight:"2px solid "+C.border,borderBottom:"1px solid "+C.border,whiteSpace:"nowrap"};}
   function pBtn(bg){return{padding:"11px 22px",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,background:bg,color:"#fff"};}
 
-  // ── ナビ定義 ──
   var staffTabs=[
     {key:"punch",  label:"⏱ 打刻"},
     {key:"wish",   label:"📅 希望"},
- 　 {key:"viewshift", label:"📋 確定シフト"},
+    {key:"viewshift", label:"📋 確定シフト"},
     {key:"mysum",  label:"📊 個人集計"},
   ];
   var managerTabs=[
@@ -646,16 +631,12 @@ function autoFill() {
     {key:"allsum", label:"④ 全員集計"},
   ];
 
-  // ══════════════════════════════════════
-  // ① 打刻
-  // ══════════════════════════════════════
   function PunchTab() {
     var emp=EMPLOYEES.find(function(e){return e.id===selEmp;});
     var rec=att[selEmp][TODAY]||{};
     var net=calcNet(entryTime(rec.in),entryTime(rec.out),entryTime(rec.bs),entryTime(rec.be));
     var confirmed=rec.confirmed;
 
-    // 確定カード
     function DailyCard() {
       var draftS=useState({status:rec.status||"",register:rec.register||false,memo:rec.memo||""});
       var draft=draftS[0]; var setDraft=draftS[1];
@@ -664,7 +645,6 @@ function autoFill() {
         updateRec(selEmp,TODAY,"register",draft.register);
         updateRec(selEmp,TODAY,"memo",draft.memo);
         updateRec(selEmp,TODAY,"confirmed",true);
-        // Supabaseに保存
         var updatedRec=Object.assign({},att[selEmp][TODAY],{status:draft.status,register:draft.register,memo:draft.memo,confirmed:true});
         if(window.saveRecord) window.saveRecord(selEmp,TODAY,MONTH,YEAR,updatedRec);
         showToast("本日の勤怠を確定しました ✓");
@@ -754,9 +734,6 @@ function autoFill() {
     );
   }
 
-  // ══════════════════════════════════════
-  // ② 全員状況
-  // ══════════════════════════════════════
   function AllTab() {
     return(
       <div>
@@ -805,9 +782,6 @@ function autoFill() {
     );
   }
 
-  // ══════════════════════════════════════
-  // ③ 希望入力
-  // ══════════════════════════════════════
   function WishTab() {
     var emp=EMPLOYEES.find(function(e){return e.id===selEmp;});
     var wishKey=wishY+"-"+wishM;
@@ -844,28 +818,9 @@ function autoFill() {
               var w=monthWishes[d]||{shift:"休み",note:""};
               var hasNote=w.note&&w.note.length>0;
               return(
-             <div key={d} style={{
-  borderRadius:8,
-  border:"1px solid "+(
-    td ? C.accent :
-    isSun ? "#F2B8B5" :
-    isSat ? "#BFD7FF" :
-    C.border
-  ),
-  background:
-    td ? C.accent+"12" :
-    isSun ? "#FFF5F5" :
-    isSat ? "#F3F7FF" :
-    C.card,
-  overflow:"hidden"
-}}>
+                <div key={d} style={{borderRadius:8,border:"1px solid "+(td?C.accent:isSun?"#F2B8B5":isSat?"#BFD7FF":C.border),background:td?C.accent+"12":isSun?"#FFF5F5":isSat?"#F3F7FF":C.card,overflow:"hidden"}}>
                   <div onClick={function(){cycleWish(selEmp,d);}} style={{padding:"6px 4px",textAlign:"center",cursor:"pointer"}}>
-                    <div style={{
-  fontSize:10,
-  color:isSun ? C.red : isSat ? C.accent : C.dim,
-  fontWeight:td ? 700 : 400,
-  marginBottom:3
-}}>{d}</div>
+                    <div style={{fontSize:10,color:isSun?C.red:isSat?C.accent:C.dim,fontWeight:td?700:400,marginBottom:3}}>{d}</div>
                     <ShiftBadge type={w.shift} size={26}/>
                     <div style={{fontSize:8,color:(SHIFT_DEF[w.shift]||{}).color,marginTop:2,fontWeight:600}}>{w.shift}</div>
                   </div>
@@ -879,17 +834,16 @@ function autoFill() {
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}>
             <button onClick={function(){
-              // Supabaseに希望を保存
               console.log('保存ボタン押下 empId:', selEmp, 'UUIDs:', window._empUUIDs);
               var wishKey=wishY+"-"+wishM;
               var monthWishes=(wishes[selEmp]&&wishes[selEmp][wishKey])||{};
               var totalDays=getDim(wishY,wishM);
               console.log('保存対象:', wishY, wishM+1, '日数:', totalDays);
               for(var d=1;d<=totalDays;d++){
-  　　　　　　　var w = monthWishes[d] || {shift:"早番", note:""};
- 　　　　　　　 if(window.saveWish) window.saveWish(selEmp,wishY,wishM+1,d,w.shift,w.note||"");
-  　　　　　　　else console.log('saveWish未定義!');
-}
+                var w = monthWishes[d] || {shift:"早番", note:""};
+                if(window.saveWish) window.saveWish(selEmp,wishY,wishM+1,d,w.shift,w.note||"");
+                else console.log('saveWish未定義!');
+              }
               showToast(emp.name+"の希望を保存しました ✓");
               setNotifications(function(prev){
                 var filtered=prev.filter(function(n){return!(n.empId===selEmp&&n.read===false);});
@@ -917,9 +871,6 @@ function autoFill() {
     );
   }
 
-  // ══════════════════════════════════════
-  // ④ 個人集計
-  // ══════════════════════════════════════
   function MySummaryTab() {
     var nyM=pM===11?0:pM+1,nyY=pM===11?pY+1:pY;
     var emp=EMPLOYEES.find(function(e){return e.id===selEmp;});
@@ -989,9 +940,6 @@ function autoFill() {
     );
   }
 
-  // ══════════════════════════════════════
-  // ⑤ シフト編集（店長）
-  // ══════════════════════════════════════
   function ShiftTab() {
     var unread=notifications.filter(function(n){return !n.read;});
     return(
@@ -1030,7 +978,6 @@ function autoFill() {
           <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
             <button onClick={autoFill} style={{padding:"9px 20px",borderRadius:8,border:"none",cursor:"pointer",background:C.accent,color:"#0D1117",fontFamily:"inherit",fontSize:13,fontWeight:700}}>✨ 希望から自動作成</button>
             <button onClick={function(){
-              // シフトをSupabaseに保存
               var totalDays=getDim(shiftY,shiftM);
               EMPLOYEES.forEach(function(e){
                 for(var d=1;d<=totalDays;d++){
@@ -1088,156 +1035,63 @@ function autoFill() {
       </div>
     );
   }
-function ViewShiftTab() {
-  var days = getDim(shiftY, shiftM);
-  var dayArr = Array.from({length:days}, function(_,i){ return i+1; });
 
-  return(
-    <div style={cardS}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-        <button
-          onClick={function(){
-            var m = shiftM - 1, y = shiftY;
-            if(m < 0){ m = 11; y--; }
-            setShiftM(m);
-            setShiftY(y);
-          }}
-          style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}
-        >
-          ‹
-        </button>
-
-        <span style={{fontWeight:800,fontSize:14,color:C.accent,flex:1,textAlign:"center"}}>
-          {shiftY}年 {shiftM+1}月 確定シフト
-        </span>
-
-        <button
-          onClick={function(){
-            var m = shiftM + 1, y = shiftY;
-            if(m > 11){ m = 0; y++; }
-            setShiftM(m);
-            setShiftY(y);
-          }}
-          style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}
-        >
-          ›
-        </button>
-      </div>
-      
-　　　<div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
-        <button
-          onClick={function(){
-  var lines = [];
-  lines.push("【" + shiftY + "年" + (shiftM+1) + "月 確定シフト】");
-  lines.push("");
-
-  EMPLOYEES.forEach(function(e){
-    lines.push(e.name);
-
-    var row = [];
-    for(var d=1; d<=days; d++){
-      var s = (shifts[e.id] && shifts[e.id][d]) || "休み";
-      row.push(d + ":" + getSym(s));
-
-      if(d % 7 === 0 || d === days){
-        lines.push(row.join(" "));
-        row = [];
-      }
-    }
-
-    lines.push("");
-  });
-
-  var text = lines.join("\n");
-
-  navigator.clipboard.writeText(text).then(function(){
-    showToast("LINE共有用テキストをコピーしました ✓");
-  }).catch(function(){
-    showToast("コピーできませんでした");
-  });
-}}
-          style={{
-            padding:"8px 16px",
-            borderRadius:8,
-            border:"none",
-            cursor:"pointer",
-            background:"#06C755",
-            color:"#fff",
-            fontFamily:"inherit",
-            fontSize:13,
-            fontWeight:700
-          }}
-        >
-          LINE共有用にコピー
-        </button>
-      </div>
-    
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-          <thead>
-            <tr>
-              <th style={{border:"1px solid "+C.border,padding:"6px",background:C.panel}}>日</th>
-              {EMPLOYEES.map(function(e){
-  var isMe = e.id===selEmp;
-  return (
-    <th
-      key={e.id}
-      style={{
-        border:"1px solid "+C.border,
-        padding:"6px",
-        background:isMe ? C.accent+"22" : C.panel,
-        color:isMe ? C.accent : C.text,
-        fontWeight:isMe ? 800 : 700
-      }}
-    >
-      {e.name}
-    </th>
-  );
-})}
-            </tr>
-          </thead>
-          <tbody>
-            {dayArr.map(function(d){
-              return (
+  function ViewShiftTab() {
+    var days = getDim(shiftY, shiftM);
+    var dayArr = Array.from({length:days}, function(_,i){ return i+1; });
+    return(
+      <div style={cardS}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+          <button onClick={function(){var m=shiftM-1,y=shiftY;if(m<0){m=11;y--;}setShiftM(m);setShiftY(y);}} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>‹</button>
+          <span style={{fontWeight:800,fontSize:14,color:C.accent,flex:1,textAlign:"center"}}>{shiftY}年 {shiftM+1}月 確定シフト</span>
+          <button onClick={function(){var m=shiftM+1,y=shiftY;if(m>11){m=0;y++;}setShiftM(m);setShiftY(y);}} style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>›</button>
+        </div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
+          <button onClick={function(){
+            var lines=[];
+            lines.push("【"+shiftY+"年"+(shiftM+1)+"月 確定シフト】");
+            lines.push("");
+            EMPLOYEES.forEach(function(e){
+              lines.push(e.name);
+              var row=[];
+              for(var d=1;d<=days;d++){
+                var s=(shifts[e.id]&&shifts[e.id][d])||"休み";
+                row.push(d+":"+getSym(s));
+                if(d%7===0||d===days){lines.push(row.join(" "));row=[];}
+              }
+              lines.push("");
+            });
+            var text=lines.join("\n");
+            navigator.clipboard.writeText(text).then(function(){showToast("LINE共有用テキストをコピーしました ✓");}).catch(function(){showToast("コピーできませんでした");});
+          }} style={{padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",background:"#06C755",color:"#fff",fontFamily:"inherit",fontSize:13,fontWeight:700}}>LINE共有用にコピー</button>
+        </div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead>
+              <tr>
+                <th style={{border:"1px solid "+C.border,padding:"6px",background:C.panel}}>日</th>
+                {EMPLOYEES.map(function(e){var isMe=e.id===selEmp;return(<th key={e.id} style={{border:"1px solid "+C.border,padding:"6px",background:isMe?C.accent+"22":C.panel,color:isMe?C.accent:C.text,fontWeight:isMe?800:700}}>{e.name}</th>);})}
+              </tr>
+            </thead>
+            <tbody>
+              {dayArr.map(function(d){return(
                 <tr key={d}>
                   <td style={{border:"1px solid "+C.border,padding:"6px",textAlign:"center"}}>{d}</td>
-                {EMPLOYEES.map(function(e){
-  var s = (shifts[e.id] && shifts[e.id][d]) || "休み";
-  var isMe = e.id===selEmp;
-  return (
-    <td
-      key={e.id+"-"+d}
-      style={{
-        border:"1px solid "+C.border,
-        padding:"6px",
-        textAlign:"center",
-        background:isMe ? C.accent+"12" : "transparent",
-        fontWeight:isMe ? 800 : 400
-      }}
-    >
-      {getSym(s)}
-    </td>
-  );
-})}
+                  {EMPLOYEES.map(function(e){var s=(shifts[e.id]&&shifts[e.id][d])||"休み";var isMe=e.id===selEmp;return(<td key={e.id+"-"+d} style={{border:"1px solid "+C.border,padding:"6px",textAlign:"center",background:isMe?C.accent+"12":"transparent",fontWeight:isMe?800:400}}>{getSym(s)}</td>);})}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              );})}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  );
-}
-  // ══════════════════════════════════════
-  // ⑥ PDF出力（店長）
-  // ══════════════════════════════════════
+    );
+  }
+
   function downloadShiftExcel(){
     if(!window.XLSX){showToast("Excel機能を読み込み中...");return;}
     var wb=XLSX.utils.book_new();
     var totalDays=getDim(pdfY,pdfM);
     var dayArr2=Array.from({length:totalDays},function(_,i){return i+1;});
-
-    // シート1: シフト表（日×スタッフ）
     var hdr=["日付","曜日"].concat(EMPLOYEES.map(function(e){return e.name;}));
     var dataRows=[];
     dayArr2.forEach(function(d){
@@ -1249,7 +1103,6 @@ function ViewShiftTab() {
       });
       dataRows.push(row);
     });
-
     var ws=XLSX.utils.aoa_to_sheet([hdr].concat(dataRows));
     var cols=[{wch:8},{wch:4}];
     EMPLOYEES.forEach(function(){cols.push({wch:8});});
@@ -1351,9 +1204,6 @@ function ViewShiftTab() {
     );
   }
 
-  // ══════════════════════════════════════
-  // ⑦ 勤怠マトリクス（店長）
-  // ══════════════════════════════════════
   function AttendTab() {
     var nyM=pM===11?0:pM+1,nyY=pM===11?pY+1:pY;
     return(
@@ -1412,7 +1262,6 @@ function ViewShiftTab() {
     );
   }
 
-  // ══════════════════════════════════════
   function downloadAllExcel(){
     if(!window.XLSX){showToast("Excel機能を読み込み中...");return;}
     var wb=XLSX.utils.book_new();
@@ -1427,17 +1276,7 @@ function ViewShiftTab() {
         var bt=isCur?rec.breakType:null;
         var breakDisp=(!isCur||!entryTime(rec.in))?"":bt==="0"?"なし":bt==="60"?"1:00":"0:45";
         var otMin=net?calcOvertime(net):0;
-        dataRows.push([
-          item.m+1+"/"+item.d,
-          getDayName(item.y,item.m,item.d),
-          sv,
-          entryTime(rec.in)||"",
-          entryTime(rec.out)||"",
-          breakDisp,
-          otMin>0?fmtOT(otMin):"",
-          rec.status||"",
-          rec.memo||""
-        ]);
+        dataRows.push([item.m+1+"/"+item.d,getDayName(item.y,item.m,item.d),sv,entryTime(rec.in)||"",entryTime(rec.out)||"",breakDisp,otMin>0?fmtOT(otMin):"",rec.status||"",rec.memo||""]);
       });
       var ws=XLSX.utils.aoa_to_sheet([hdr].concat(dataRows));
       ws["!cols"]=[{wch:8},{wch:4},{wch:6},{wch:6},{wch:6},{wch:6},{wch:6},{wch:8},{wch:20}];
@@ -1447,21 +1286,17 @@ function ViewShiftTab() {
     showToast("全員のExcelをダウンロードしました 📊");
   }
 
-  // ⑧ 全員集計（店長）
-  // ══════════════════════════════════════
   function AllSummaryTab() {
     var nyM=pM===11?0:pM+1,nyY=pM===11?pY+1:pY;
     var rows=EMPLOYEES.map(function(emp){
       var workDays=0,totalMin=0,overtimeMin=0,registerC=0,holidayC=0,absC=0,paidC=0,memos=[];
       periodDays.forEach(function(item){
         var isCur=item.y===YEAR&&item.m===MONTH;
-        var sv=isCur?(shifts[emp.id][item.d]||"休み"):(getIsWE(item.y,item.m,item.d)?"休み":"早番");
-        if(sv==="休み"&&!isCur) return;
         if(!isCur) return;
         var rec=att[emp.id][item.d]||{};
         var net=calcNet(entryTime(rec.in),entryTime(rec.out),entryTime(rec.bs),entryTime(rec.be));
         if(net){workDays++;totalMin+=net;overtimeMin+=calcOvertime(net);}
-          if(rec.status==="有給") paidC++;
+        if(rec.status==="有給") paidC++;
         if(rec.status==="欠勤") absC++;
         if(rec.status==="休日出勤") holidayC++;
         if(rec.register) registerC++;
@@ -1501,7 +1336,7 @@ function ViewShiftTab() {
             <button onClick={function(){var m=pM+1,y=pY;if(m>11){m=0;y++;}setPM(m);setPY(y);}} style={{padding:"5px 13px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}>›</button>
           </div>
           <button onClick={function(){EMPLOYEES.forEach(function(emp,i){setTimeout(function(){downloadCSV(emp);},i*300);});}} style={{padding:"9px 22px",borderRadius:8,border:"none",cursor:"pointer",background:C.green,color:"#0D1117",fontFamily:"inherit",fontSize:13,fontWeight:700}}>📥 全員CSV</button>
-            <button onClick={function(){downloadAllExcel();}} style={{padding:"9px 22px",borderRadius:8,border:"none",cursor:"pointer",background:"#1D6F42",color:"#fff",fontFamily:"inherit",fontSize:13,fontWeight:700}}>📊 全員Excel</button>
+          <button onClick={function(){downloadAllExcel();}} style={{padding:"9px 22px",borderRadius:8,border:"none",cursor:"pointer",background:"#1D6F42",color:"#fff",fontFamily:"inherit",fontSize:13,fontWeight:700}}>📊 全員Excel</button>
         </div>
         {rows.map(function(r){return(
           <div key={r.emp.id} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:20,marginBottom:14}}>
@@ -1520,9 +1355,6 @@ function ViewShiftTab() {
     );
   }
 
-  // ══════════════════════════════════════
-  // モーダル類
-  // ══════════════════════════════════════
   function ShiftPopover() {
     if(!editShift) return null;
     var emp=EMPLOYEES.find(function(e){return e.id===editShift.empId;});
@@ -1554,7 +1386,7 @@ function ViewShiftTab() {
           <div style={{fontSize:12,color:C.dim,marginTop:4,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{MONTH+1}月{editAtt.day}日（{getDayName(YEAR,MONTH,editAtt.day)}）<ShiftBadge type={st} size={20}/><span style={{color:stDef.color,fontWeight:700}}>{st} {stDef.time}</span></div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
-          {[["出勤時刻","in"],["退勤時刻","out"],["休憩開始","bs"],["休憩終了","be"]].map(function(pair){return(<div key={pair[1]} style={{marginBottom:12}}><div style={{fontSize:10,color:C.dim,marginBottom:3,letterSpacing:1}}>{pair[0]}</div><input type="time" defaultValue={editForm[pair[1]]||""} onInput={function(e){var k=pair[1];setEditForm(function(p){var n=Object.assign({},p);n[k]=e.target.value;return n;});}} style={inputS}/></div>);})}
+          {[["出勤時刻","in"],["退勤時刻","out"],["休憩開始","bs"],["休憩終了","be"]].map(function(pair){return(<div key={pair[1]} style={{marginBottom:12}}><div style={{fontSize:10,color:C.dim,marginBottom:3,letterSpacing:1}}>{pair[0]}</div><input type="time" defaultValue={entryTime(editForm[pair[1]])||""} onInput={function(e){var k=pair[1];setEditForm(function(p){var n=Object.assign({},p);var prev=n[k]||makeEntry("","");n[k]=Object.assign({},prev,{time:e.target.value,edited:true});return n;});}} style={inputS}/></div>);})}
         </div>
         <div style={{marginBottom:12}}>
           <div style={{fontSize:10,color:C.dim,marginBottom:6,letterSpacing:1}}>勤怠ステータス</div>
@@ -1590,9 +1422,6 @@ function ViewShiftTab() {
     );
   }
 
-  // ══════════════════════════════════════
-  // ログインモーダル
-  // ══════════════════════════════════════
   function LoginModal() {
     return(
       <PasswordModal
@@ -1604,9 +1433,6 @@ function ViewShiftTab() {
     );
   }
 
-  // ══════════════════════════════════════
-  // レンダー
-  // ══════════════════════════════════════
   var currentTabs=isManager?staffTabs.concat(managerTabs):staffTabs;
 
   return(
@@ -1664,7 +1490,6 @@ function ViewShiftTab() {
     </div>
   );
 }
-
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
