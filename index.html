@@ -549,6 +549,16 @@ function App() {
   }
 
   // ── シフト ──
+  function doSetShift(eid,d,v) {
+  setShifts(function(p){
+    var e = Object.assign({}, p[eid]);
+    e[d] = v;
+    var n = Object.assign({}, p);
+    n[eid] = e;
+    return n;
+  });
+  setEditShift(null);
+}
 function autoFill() {
   var types = ["早番","遅番","中番","早番","中番"], next = {};
   var wishKey = shiftY + "-" + shiftM;
