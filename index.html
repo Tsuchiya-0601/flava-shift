@@ -88,15 +88,20 @@
 
   // シフトを保存
  window.saveShift = function(empId, year, month, day, shift) {
-  console.log('saving shift:', empId, year, month, day, shift);
+
+  var empUUID = window._empUUIDs[empId];
+  if (!empUUID) return;
+
+  console.log('saving shift:', empId, '->', empUUID, year, month, day, shift);
+
   db.from('shifts')
     .upsert(
-      { employee_id: empId, year: year, month: month, day: day, shift: shift },
+      { employee_id: empUUID, year: year, month: month, day: day, shift: shift },
       { onConflict: 'employee_id,year,month,day' }
     )
     .then(function(res) {
       if (res.error) console.log('shift save error:', res.error.message);
-      else console.log('shift saved:', empId, year, month, day, shift);
+      else console.log('shift saved');
     });
 };
 
