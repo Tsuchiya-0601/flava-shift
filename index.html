@@ -54,7 +54,6 @@
 
     // 希望を保存
     window.saveWish = function(empId, year, month, day, shift, note) {
-      if (!empUUID) { console.log('No UUID for empId:', empId, window._empUUIDs); return; }
       var payload = {
         employee_id: empId,
         year: year,
