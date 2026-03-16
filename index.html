@@ -875,9 +875,10 @@ function autoFill() {
               var totalDays=getDim(wishY,wishM);
               console.log('保存対象:', wishY, wishM+1, '日数:', totalDays);
               for(var d=1;d<=totalDays;d++){
-                if(window.saveWish) window.saveWish(selEmp,wishY,wishM+1,d,w.shift,w.note||"");
-                else console.log('saveWish未定義!');
-              }
+  　　　　　　　var w = monthWishes[d] || {shift:"早番", note:""};
+ 　　　　　　　 if(window.saveWish) window.saveWish(selEmp,wishY,wishM+1,d,w.shift,w.note||"");
+  　　　　　　　else console.log('saveWish未定義!');
+}
               showToast(emp.name+"の希望を保存しました ✓");
               setNotifications(function(prev){
                 var filtered=prev.filter(function(n){return!(n.empId===selEmp&&n.read===false);});
