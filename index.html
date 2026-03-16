@@ -25,14 +25,14 @@
   db.from('employees').select('id, name').order('id').then(function(res) {
     if (res.data) {
       var nameMap = {
-        '渡邊 なつき': 1,
-        '小河 滝子': 2,
-        '速水 千夢': 3,
-        '長澤 璃奈': 4,
-        '鈴木 天空': 5,
-        '廣田 和希': 6,
-        '宇野 ひろみ': 7
-      };
+  '渡邊 なつき': 1,
+  '小河 滝子': 2,
+  '宇野 ひろみ': 3,
+  '速水 千夢': 4,
+  '長澤 璃奈': 5,
+  '鈴木 天空': 6,
+  '廣田 和希': 7
+};
       res.data.forEach(function(e) {
         var appId = nameMap[e.name];
         if (appId) window._empUUIDs[appId] = e.id;
