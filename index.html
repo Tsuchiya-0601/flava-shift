@@ -40,28 +40,7 @@
         console.log('Employees loaded:', window._empUUIDs);
       }
     });
-window.saveWish = function(empId, year, month, day, shift, note) {
 
-  var payload = {
-    employee_id: empId,
-    year: year,
-    month: month,
-    day: day,
-    shift: shift,
-    note: note || ''
-  };
-
-  db.from('shift_wishes')
-    .upsert(payload, { onConflict: 'employee_id,year,month,day' })
-    .then(function(res){
-      if(res.error){
-        console.log('wish save error:', res.error.message);
-      } else {
-        console.log('wish saved:', payload);
-      }
-    });
-
-};
     // 打刻データを読み込む
     window.loadAttendance = function(year, month, callback) {
       var startDate = year + '-' + String(month+1).padStart(2,'0') + '-01';
