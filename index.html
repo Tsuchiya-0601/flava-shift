@@ -12,115 +12,129 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script>
-    const { createClient } = supabase;
-    const db = createClient("https://njfczsystzfcqfcnmtkq.supabase.co", "sb_publishable_bLly_Xbs0DqycEmiUS259w_ZVS6EZUb");
+ <script>
+  const { createClient } = supabase;
+  const db = createClient(
+    "https://njfczsystzfcqfcnmtkq.supabase.co",
+    "sb_publishable_bLly_Xbs0DqycEmiUS259w_ZVS6EZUb"
+  );
 
-    // 従業員IDキャッシュ
-　　window._empUUIDs = {};
+  // 従業員IDキャッシュ
+  window._empUUIDs = {};
 
-    // 起動時に従業員データ読み込み
-    db.from('employees').select('id, name').order('id').then(function(res) {
-     
-      if (res.data) {
-        // 名前でマッピング
-        var nameMap = {
-          '渡邊 なつき': 1,
-          '小河 滝子': 2,
-          '速水 千夢': 3,
-          '長澤 瑠奈': 4,
-          '鈴木 天空': 5,
-          '廣田 和希': 6,
-          '宇野 ひろみ': 7
-        };
-        res.data.forEach(function(e) {
-          var appId = nameMap[e.name];
-          if (appId) window._empUUIDs[appId] = e.id;
-        });
-        console.log('Employees loaded:', window._empUUIDs);
-      }
-    });
+  // 起動時に従業員データ読み込み
+  db.from('employees').select('id, name').order('id').then(function(res) {
+    if (res.data) {
+      var nameMap = {
+        '渡邊 なつき': 1,
+        '小河 滝子': 2,
+        '速水 千夢': 3,
+        '長澤 瑠奈': 4,
+        '鈴木 天空': 5,
+        '廣田 和希': 6,
+        '宇野 ひろみ': 7
+      };
+      res.data.forEach(function(e) {
+        var appId = nameMap[e.name];
+        if (appId) window._empUUIDs[appId] = e.id;
+      });
+      console.log('Employees loaded:', window._empUUIDs);
+    }
+  });
 
-    // 打刻データを読み込む
-    window.loadAttendance = function(year, month, callback) {
-      var startDate = year + '-' + String(month+1).padStart(2,'0') + '-01';
-      var endDate   = year + '-' + String(month+1).padStart(2,'0') + '-31';
-      db.from('attendance').select('*')
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .then(function(res) {
-          if (res.data) callback(res.data);
-        });
+  // 打刻データを読み込む
+  window.loadAttendance = function(year, month, callback) {
+    var startDate = year + '-' + String(month + 1).padStart(2, '0') + '-01';
+    var endDate   = year + '-' + String(month + 1).padStart(2, '0') + '-31';
+    db.from('attendance').select('*')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .then(function(res) {
+        if (res.data) callback(res.data);
+      });
+  };
+
+  // 希望を保存
+  window.saveWish = function(empId, year, month, day, shift, note) {
+    var payload = {
+      employee_id: empId,
+      year: year,
+      month: month,
+      day: day,
+      shift: shift,
+      note: note || ''
     };
 
-    // 希望を保存
-      var payload = {
-        employee_id: empId,
-        year: year,
-        month: month,
-        day: day,
-        shift: shift,
-        note: note || ''
-      };
-      db.from('shift_wishes')
-        .upsert(payload, {onConflict: 'employee_id,year,month,day'})
-        .then(function(res) {
-          if (res.error) console.log('wish save error:', res.error.message);
-        });
+    db.from('shift_wishes')
+      .upsert(payload, { onConflict: 'employee_id,year,month,day' })
+      .then(function(res) {
+        if (res.error) {
+          console.log('wish save error:', res.error.message);
+        } else {
+          console.log('wish saved:', payload);
+        }
+      });
+  };
 
-    // 希望を読み込む
-    window.loadWishes = function(year, month, callback) {
-      db.from('shift_wishes').select('*')
-        .eq('year', year)
-        .eq('month', month)
-        .then(function(res) {
-          if (res.data) callback(res.data);
-        });
+  // 希望を読み込む
+  window.loadWishes = function(year, month, callback) {
+    db.from('shift_wishes').select('*')
+      .eq('year', year)
+      .eq('month', month)
+      .then(function(res) {
+        if (res.data) callback(res.data);
+      });
+  };
 
-    // シフトを保存
-    window.saveShift = function(empId, year, month, day, shift) {
-  console.log('saving shift:', empId, year, month, day, shift);
-  db.from('shifts')
-    .upsert(
-      { employee_id: empId, year: year, month: month, day: day, shift: shift },
-      { onConflict: 'employee_id,year,month,day' }
-    )
-    .then(function(res) {
-      if (res.error) console.log('shift save error:', res.error.message);
-    });
+  // シフトを保存
+  window.saveShift = function(empId, year, month, day, shift) {
+    console.log('saving shift:', empId, year, month, day, shift);
+    db.from('shifts')
+      .upsert(
+        { employee_id: empId, year: year, month: month, day: day, shift: shift },
+        { onConflict: 'employee_id,year,month,day' }
+      )
+      .then(function(res) {
+        if (res.error) console.log('shift save error:', res.error.message);
+      });
+  };
 
-    // シフトを読み込む
-    window.loadShifts = function(year, month, callback) {
-      db.from('shifts').select('*')
-        .eq('year', year)
-        .eq('month', month)
-        .then(function(res) {
-          if (res.data) callback(res.data);
-        });
+  // シフトを読み込む
+  window.loadShifts = function(year, month, callback) {
+    db.from('shifts').select('*')
+      .eq('year', year)
+      .eq('month', month)
+      .then(function(res) {
+        if (res.data) callback(res.data);
+      });
+  };
 
-    // 打刻を保存
-    window.saveRecord = function(empId, day, month, year, rec) {
-    　var date = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
-      var payload = {
-        employee_id: empId,
-        date: date,
-        time_in:     rec.in  ? (rec.in.time  || rec.in)  : null,
-        time_out:    rec.out ? (rec.out.time || rec.out) : null,
-        break_start: rec.bs  ? (rec.bs.time  || rec.bs)  : null,
-        break_end:   rec.be  ? (rec.be.time  || rec.be)  : null,
-        break_type:  rec.breakType || null,
-        status:      rec.status   || '',
-        memo:        rec.memo     || '',
-        register:    rec.register || false,
-        confirmed:   rec.confirmed|| false,
-        loc_in:      rec.in ? (rec.in.loc || '') : '',
-      };
-      db.from('attendance').upsert(payload, {onConflict: 'employee_id,date'}).then(function(res) {
+  // 打刻を保存
+  window.saveRecord = function(empId, day, month, year, rec) {
+    var date = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    var payload = {
+      employee_id: empId,
+      date: date,
+      time_in:     rec.in  ? (rec.in.time  || rec.in)  : null,
+      time_out:    rec.out ? (rec.out.time || rec.out) : null,
+      break_start: rec.bs  ? (rec.bs.time  || rec.bs)  : null,
+      break_end:   rec.be  ? (rec.be.time  || rec.be)  : null,
+      break_type:  rec.breakType || null,
+      status:      rec.status || '',
+      memo:        rec.memo || '',
+      register:    rec.register || false,
+      confirmed:   rec.confirmed || false,
+      loc_in:      rec.in ? (rec.in.loc || '') : ''
+    };
+
+    db.from('attendance')
+      .upsert(payload, { onConflict: 'employee_id,date' })
+      .then(function(res) {
         if (res.error) console.log('save error:', res.error.message);
         else console.log('saved:', date);
       });
-    };
-  </script>
+  };
+</script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
