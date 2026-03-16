@@ -105,27 +105,77 @@
 
   // ✅ 修正②: monthは0始まりで受け取り、内部で+1して日付文字列を作る（呼び出し側と統一）
  window.saveRecord = function(empId, day, month, year, rec) {
-
-  var date = year + '-' + String(month + 1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
-
-  var payload = {
-    employee_id: Number(empId),
-    date: date,
-    time_in: rec.in ? (rec.in.time || rec.in) : null
-  };
+  var date = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  var eid = Number(empId);
 
   db.from('attendance')
-  .upsert(payload,{onConflict:'employee_id,date'})
-  .then(function(res){
+    .select('*')
+    .eq('employee_id', eid)
+    .eq('date', date)
+    .maybeSingle()
+    .then(function(findRes) {
+      var old = findRes.data || {};
 
-    if(res.error){
-      alert("保存エラー\n"+res.error.message);
-    }else{
-      alert("保存成功\n"+date);
-    }
+      var payload = {
+        employee_id: eid,
+        date: date,
 
-  });
+        time_in: rec.in
+          ? (rec.in.time || rec.in)
+          : (old.time_in || null),
 
+        time_out: rec.out
+          ? (rec.out.time || rec.out)
+          : (old.time_out || null),
+
+        break_start: rec.bs
+          ? (rec.bs.time || rec.bs)
+          : (old.break_start || null),
+
+        break_end: rec.be
+          ? (rec.be.time || rec.be)
+          : (old.break_end || null),
+
+        break_type:
+          rec.breakType !== undefined && rec.breakType !== null && rec.breakType !== ''
+            ? rec.breakType
+            : (old.break_type || null),
+
+        status:
+          rec.status !== undefined && rec.status !== null
+            ? rec.status
+            : (old.status || ''),
+
+        memo:
+          rec.memo !== undefined && rec.memo !== null
+            ? rec.memo
+            : (old.memo || ''),
+
+        register:
+          rec.register !== undefined
+            ? rec.register
+            : (old.register || false),
+
+        confirmed:
+          rec.confirmed !== undefined
+            ? rec.confirmed
+            : (old.confirmed || false),
+
+        loc_in: rec.in
+          ? (rec.in.loc || '')
+          : (old.loc_in || '')
+      };
+
+      db.from('attendance')
+        .upsert(payload, { onConflict: 'employee_id,date' })
+        .then(function(res) {
+          if (res.error) {
+            alert("保存エラー\n" + res.error.message);
+          } else {
+            console.log('saved:', payload);
+          }
+        });
+    });
 };
 </script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
