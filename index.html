@@ -1127,27 +1127,35 @@ function ViewShiftTab() {
 　　　<div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
         <button
           onClick={function(){
-            var lines = [];
-            lines.push("【" + shiftY + "年" + (shiftM+1) + "月 確定シフト】");
+  var lines = [];
+  lines.push("【" + shiftY + "年" + (shiftM+1) + "月 確定シフト】");
+  lines.push("");
 
-            for(var d=1; d<=days; d++){
-              var row = [];
-              row.push((shiftM+1) + "/" + d);
-              EMPLOYEES.forEach(function(e){
-                var s = (shifts[e.id] && shifts[e.id][d]) || "休み";
-                row.push(e.name + ":" + getSym(s));
-              });
-              lines.push(row.join(" / "));
-            }
+  EMPLOYEES.forEach(function(e){
+    lines.push(e.name);
 
-            var text = lines.join("\n");
+    var row = [];
+    for(var d=1; d<=days; d++){
+      var s = (shifts[e.id] && shifts[e.id][d]) || "休み";
+      row.push(d + ":" + getSym(s));
 
-            navigator.clipboard.writeText(text).then(function(){
-              showToast("LINE共有用テキストをコピーしました ✓");
-            }).catch(function(){
-              showToast("コピーできませんでした");
-            });
-          }}
+      if(d % 7 === 0 || d === days){
+        lines.push(row.join(" "));
+        row = [];
+      }
+    }
+
+    lines.push("");
+  });
+
+  var text = lines.join("\n");
+
+  navigator.clipboard.writeText(text).then(function(){
+    showToast("LINE共有用テキストをコピーしました ✓");
+  }).catch(function(){
+    showToast("コピーできませんでした");
+  });
+}}
           style={{
             padding:"8px 16px",
             borderRadius:8,
