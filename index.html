@@ -16,11 +16,12 @@
     const { createClient } = supabase;
     const db = createClient("https://njfczsystzfcqfcnmtkq.supabase.co", "sb_publishable_bLly_Xbs0DqycEmiUS259w_ZVS6EZUb");
 
-    // 従業員UUIDをキャッシュ
-    window._employee_id: empId = {};
+    // 従業員IDキャッシュ
+　　window._empUUIDs = {};
 
     // 起動時に従業員データ読み込み
     db.from('employees').select('id, name').order('id').then(function(res) {
+     
       if (res.data) {
         // 名前でマッピング
         var nameMap = {
@@ -39,7 +40,28 @@
         console.log('Employees loaded:', window._empUUIDs);
       }
     });
+window.saveWish = function(empId, year, month, day, shift, note) {
 
+  var payload = {
+    employee_id: empId,
+    year: year,
+    month: month,
+    day: day,
+    shift: shift,
+    note: note || ''
+  };
+
+  db.from('shift_wishes')
+    .upsert(payload, { onConflict: 'employee_id,year,month,day' })
+    .then(function(res){
+      if(res.error){
+        console.log('wish save error:', res.error.message);
+      } else {
+        console.log('wish saved:', payload);
+      }
+    });
+
+};
     // 打刻データを読み込む
     window.loadAttendance = function(year, month, callback) {
       var startDate = year + '-' + String(month+1).padStart(2,'0') + '-01';
@@ -53,7 +75,6 @@
     };
 
     // 希望を保存
-    window.saveWish = function(empId, year, month, day, shift, note) {
       var payload = {
         employee_id: empId,
         year: year,
@@ -80,8 +101,7 @@
     };
 
     // シフトを保存
-    window.saveShift = function(empId, year, month, day, shift) {
-      if (!empUUID) return;
+    window.saveShift = function(empId, year, month, day, shift) {window.saveShift = function(empId, year, month, day, shift) {
       console.log('saving shift:', empId, '->', empUUID, year, month, day, shift);
       db.from('shifts')
         .upsert({employee_id: empId, year: year, month: month, day: day, shift: shift}, {onConflict: 'employee_id,year,month,day'})
@@ -102,8 +122,7 @@
 
     // 打刻を保存
     window.saveRecord = function(empId, day, month, year, rec) {
-      if (!empUUID) return;
-      var date = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+    　var date = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
       var payload = {
         employee_id: empId,
         date: date,
