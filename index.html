@@ -125,15 +125,15 @@
       register:    rec.register || false,
       confirmed:   rec.confirmed || false,
       loc_in:      rec.in ? (rec.in.loc || '') : ''
-    };
+   };
 
-    db.from('attendance')
-      .upsert(payload, { onConflict: 'employee_id,date' })
-      .then(function(res) {
-        if (res.error) console.log('save error:', res.error.message);
-        else console.log('saved:', date);
-      });
-  };
+db.from('attendance')
+  .upsert(payload, { onConflict: 'employee_id,date' })
+  .then(function(res) {
+    if (res.error) console.log('save error:', res.error.message);
+    else console.log('saved:', date);
+  });
+};
 </script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
