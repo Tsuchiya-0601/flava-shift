@@ -636,6 +636,7 @@ function autoFill() {
   var staffTabs=[
     {key:"punch",  label:"⏱ 打刻"},
     {key:"wish",   label:"📅 希望"},
+ 　 {key:"viewshift", label:"📋 確定シフト"},
     {key:"mysum",  label:"📊 個人集計"},
   ];
   var managerTabs=[
@@ -1087,7 +1088,78 @@ function autoFill() {
       </div>
     );
   }
+function ViewShiftTab() {
+  var days = getDim(shiftY, shiftM);
+  var dayArr = Array.from({length:days}, function(_,i){ return i+1; });
 
+  return(
+    <div style={cardS}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <button
+          onClick={function(){
+            var m = shiftM - 1, y = shiftY;
+            if(m < 0){ m = 11; y--; }
+            setShiftM(m);
+            setShiftY(y);
+          }}
+          style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}
+        >
+          ‹
+        </button>
+
+        <span style={{fontWeight:800,fontSize:14,color:C.accent,flex:1,textAlign:"center"}}>
+          {shiftY}年 {shiftM+1}月 確定シフト
+        </span>
+
+        <button
+          onClick={function(){
+            var m = shiftM + 1, y = shiftY;
+            if(m > 11){ m = 0; y++; }
+            setShiftM(m);
+            setShiftY(y);
+          }}
+          style={{padding:"5px 12px",borderRadius:6,border:"1px solid "+C.border,background:"transparent",color:C.text,cursor:"pointer"}}
+        >
+          ›
+        </button>
+      </div>
+
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead>
+            <tr>
+              <th style={{border:"1px solid "+C.border,padding:"6px",background:C.panel}}>日</th>
+              {EMPLOYEES.map(function(e){
+                return (
+                  <th key={e.id} style={{border:"1px solid "+C.border,padding:"6px",background:C.panel}}>
+                    {e.name}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {dayArr.map(function(d){
+              return (
+                <tr key={d}>
+                  <td style={{border:"1px solid "+C.border,padding:"6px",textAlign:"center"}}>{d}</td>
+                  {EMPLOYEES.map(function(e){
+                    var s = (shifts[e.id] && shifts[e.id][d]) || "休み";
+                    return (
+                      <td key={e.id+"-"+d} style={{border:"1px solid "+C.border,padding:"6px",textAlign:"center"}}>
+                        {s}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
   // ══════════════════════════════════════
   // ⑥ PDF出力（店長）
   // ══════════════════════════════════════
@@ -1508,6 +1580,7 @@ function autoFill() {
         {tab==="punch"  && <PunchTab/>}
         {tab==="all"    && <AllTab/>}
         {tab==="wish"   && <WishTab/>}
+        {tab==="viewshift" && <ViewShiftTab/>}
         {tab==="mysum"  && <MySummaryTab/>}
         {tab==="shift"  && isManager && <ShiftTab/>}
         {tab==="pdf"    && isManager && <PdfTab/>}
