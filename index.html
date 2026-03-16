@@ -101,8 +101,8 @@ window.saveWish = function(empId, year, month, day, shift, note) {
     };
 
     // シフトを保存
-    window.saveShift = function(empId, year, month, day, shift) {window.saveShift = function(empId, year, month, day, shift) {
-      console.log('saving shift:', empId, '->', empUUID, year, month, day, shift);
+    window.saveShift = function(empId, year, month, day, shift) {
+      console.log('saving shift:', empId, year, month, day, shift);
       db.from('shifts')
         .upsert({employee_id: empId, year: year, month: month, day: day, shift: shift}, {onConflict: 'employee_id,year,month,day'})
         .then(function(res) {
