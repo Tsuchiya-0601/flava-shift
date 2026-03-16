@@ -88,9 +88,11 @@
 
   // シフトを保存
  window.saveShift = function(empId, year, month, day, shift) {
-
   var empUUID = window._empUUIDs[empId];
-  if (!empUUID) return;
+  if (!empUUID) {
+    console.log('No UUID for empId:', empId, window._empUUIDs);
+    return;
+  }
 
   console.log('saving shift:', empId, '->', empUUID, year, month, day, shift);
 
@@ -101,7 +103,7 @@
     )
     .then(function(res) {
       if (res.error) console.log('shift save error:', res.error.message);
-      else console.log('shift saved');
+      else console.log('shift saved:', empUUID, year, month, day, shift);
     });
 };
 
