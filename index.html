@@ -333,17 +333,27 @@ function LiveClock(props) {
   return <span style={s}>{st[0].toLocaleTimeString("ja-JP")}</span>;
 }
 
-function getLocation(cb) {
-  if(!navigator.geolocation){cb("位置情報非対応");return;}
+function getLocation(cb){
+  if(!navigator.geolocation){
+    cb("位置取得不可");
+    return;
+  }
+
   navigator.geolocation.getCurrentPosition(
     function(pos){
-      var lat=pos.coords.latitude,lng=pos.coords.longitude;
-      fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat="+lat+"&lon="+lng+"&accept-language=ja")
-        .then(function(r){return r.json();})
-        .then(function(d){var a=d.address||{};cb((a.city||a.town||a.village||"")+(a.suburb||a.neighbourhood||"")||"位置取得済");})
-        .catch(function(){cb("緯度"+lat.toFixed(3)+" 経度"+lng.toFixed(3));});
+      var lat = pos.coords.latitude.toFixed(5);
+      var lng = pos.coords.longitude.toFixed(5);
+
+      cb(lat + "," + lng);   // ← 座標だけ返す
     },
-    function(){cb("位置情報拒否");}
+    function(){
+      cb("位置取得失敗");
+    },
+    {
+      enableHighAccuracy:false,
+      maximumAge:60000,
+      timeout:4000
+    }
   );
 }
 
