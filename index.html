@@ -1145,11 +1145,11 @@ function ViewShiftTab() {
                   <td style={{border:"1px solid "+C.border,padding:"6px",textAlign:"center"}}>{d}</td>
                   {EMPLOYEES.map(function(e){
                     var s = (shifts[e.id] && shifts[e.id][d]) || "休み";
-                    return (
-                      <td key={e.id+"-"+d} style={{border:"1px solid "+C.border,padding:"6px",textAlign:"center"}}>
-                        {s}
-                      </td>
-                    );
+return (
+  <td key={e.id+"-"+d} style={{border:"1px solid "+C.border,padding:"6px",textAlign:"center"}}>
+    {getSym(s)}
+  </td>
+);
                   })}
                 </tr>
               );
