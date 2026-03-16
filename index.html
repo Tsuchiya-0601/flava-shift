@@ -826,17 +826,13 @@ function autoFill() {
             {Array.from({length:firstDow},function(_,i){return <div key={"x"+i}/>;}) }
             {wishDayArr.map(function(d){
               var dow = new Date(wishY, wishM, d).getDay();
-              var isSun = dow === 0;
-              var isSat = dow === 6;
-              var td = getIsToday(wishY, wishM, d);
+ 　　　　　　　var isSun = dow === 0;
+  　　　　　　 var isSat = dow === 6;var td = getIsToday(wishY, wishM, d);
               var monthWishes=(wishes[selEmp]&&wishes[selEmp][wishKey])||{};
               var w=monthWishes[d]||{shift:"休み",note:""};
               var hasNote=w.note&&w.note.length>0;
               return(
-               var dow = new Date(wishY, wishM, d).getDay();
-　　　　　　　  var isSun = dow === 0;
-               var isSat = dow === 6;
-         <div key={d} style={{
+             <div key={d} style={{
   borderRadius:8,
   border:"1px solid "+(
     td ? C.accent :
