@@ -826,8 +826,9 @@ function autoFill() {
             {Array.from({length:firstDow},function(_,i){return <div key={"x"+i}/>;}) }
             {wishDayArr.map(function(d){
               var dow = new Date(wishY, wishM, d).getDay();
- 　　　　　　　var isSun = dow === 0;
-  　　　　　　 var isSat = dow === 6;var td = getIsToday(wishY, wishM, d);
+              var isSun = dow === 0;
+              var isSat = dow === 6;
+              var td = getIsToday(wishY, wishM, d);
               var monthWishes=(wishes[selEmp]&&wishes[selEmp][wishKey])||{};
               var w=monthWishes[d]||{shift:"休み",note:""};
               var hasNote=w.note&&w.note.length>0;
@@ -848,7 +849,12 @@ function autoFill() {
   overflow:"hidden"
 }}>
                   <div onClick={function(){cycleWish(selEmp,d);}} style={{padding:"6px 4px",textAlign:"center",cursor:"pointer"}}>
-                    <div style={{fontSize:10,color:wk?C.red:C.dim,fontWeight:td?700:400,marginBottom:3}}>{d}</div>
+                    <div style={{
+  fontSize:10,
+  color:isSun ? C.red : isSat ? C.accent : C.dim,
+  fontWeight:td ? 700 : 400,
+  marginBottom:3
+}}>{d}</div>
                     <ShiftBadge type={w.shift} size={26}/>
                     <div style={{fontSize:8,color:(SHIFT_DEF[w.shift]||{}).color,marginTop:2,fontWeight:600}}>{w.shift}</div>
                   </div>
@@ -869,8 +875,6 @@ function autoFill() {
               var totalDays=getDim(wishY,wishM);
               console.log('保存対象:', wishY, wishM+1, '日数:', totalDays);
               for(var d=1;d<=totalDays;d++){
-                var wishKey = shiftY + "-" + shiftM;
-　　         　　var wr = (((wishes[editShift.empId] || {})[wishKey] || {})[editShift.day]) || {shift:"早番", note:""};
                 if(window.saveWish) window.saveWish(selEmp,wishY,wishM+1,d,w.shift,w.note||"");
                 else console.log('saveWish未定義!');
               }
