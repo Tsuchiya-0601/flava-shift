@@ -54,10 +54,9 @@
 
     // 希望を保存
     window.saveWish = function(empId, year, month, day, shift, note) {
-      var empUUID = window._empUUIDs[empId];
       if (!empUUID) { console.log('No UUID for empId:', empId, window._empUUIDs); return; }
       var payload = {
-        employee_id: empUUID,
+        employee_id: empId,
         year: year,
         month: month,
         day: day,
@@ -83,11 +82,10 @@
 
     // シフトを保存
     window.saveShift = function(empId, year, month, day, shift) {
-      var empUUID = window._empUUIDs[empId];
       if (!empUUID) return;
       console.log('saving shift:', empId, '->', empUUID, year, month, day, shift);
       db.from('shifts')
-        .upsert({employee_id: empUUID, year: year, month: month, day: day, shift: shift}, {onConflict: 'employee_id,year,month,day'})
+        .upsert({employee_id: empId, year: year, month: month, day: day, shift: shift}, {onConflict: 'employee_id,year,month,day'})
         .then(function(res) {
           if (res.error) console.log('shift save error:', res.error.message);
         });
@@ -105,11 +103,10 @@
 
     // 打刻を保存
     window.saveRecord = function(empId, day, month, year, rec) {
-      var empUUID = window._empUUIDs[empId];
       if (!empUUID) return;
       var date = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
       var payload = {
-        employee_id: empUUID,
+        employee_id: empId,
         date: date,
         time_in:     rec.in  ? (rec.in.time  || rec.in)  : null,
         time_out:    rec.out ? (rec.out.time || rec.out) : null,
