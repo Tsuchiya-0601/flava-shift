@@ -104,36 +104,28 @@
   };
 
   // ✅ 修正②: monthは0始まりで受け取り、内部で+1して日付文字列を作る（呼び出し側と統一）
-  window.saveRecord = function(empId, day, month, year, rec) {
-  var date = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+ window.saveRecord = function(empId, day, month, year, rec) {
+
+  var date = year + '-' + String(month + 1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
 
   var payload = {
     employee_id: Number(empId),
     date: date,
-    time_in:     rec.in  ? (rec.in.time  || rec.in)  : null,
-    time_out:    rec.out ? (rec.out.time || rec.out) : null,
-    break_start: rec.bs  ? (rec.bs.time  || rec.bs)  : null,
-    break_end:   rec.be  ? (rec.be.time  || rec.be)  : null,
-    break_type:  rec.breakType || null,
-    status:      rec.status || '',
-    memo:        rec.memo || '',
-    register:    rec.register || false,
-    confirmed:   rec.confirmed || false,
-    loc_in:      rec.in ? (rec.in.loc || '') : ''
+    time_in: rec.in ? (rec.in.time || rec.in) : null
   };
 
-  console.log('saveRecord payload:', payload);
-
   db.from('attendance')
-    .upsert(payload, { onConflict: 'employee_id,date' })
-    .then(function(res) {
-      if (res.error) {
-        console.log('save error full:', res.error);
-        console.log('save error message:', res.error.message);
-      } else {
-        console.log('saved:', payload);
-      }
-    });
+  .upsert(payload,{onConflict:'employee_id,date'})
+  .then(function(res){
+
+    if(res.error){
+      alert("保存エラー\n"+res.error.message);
+    }else{
+      alert("保存成功\n"+date);
+    }
+
+  });
+
 };
 </script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
