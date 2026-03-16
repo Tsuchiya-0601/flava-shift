@@ -1123,19 +1123,109 @@ function ViewShiftTab() {
           ›
         </button>
       </div>
+      
+　　　<div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
+        <button
+          onClick={function(){
+            var lines = [];
+            lines.push("【" + shiftY + "年" + (shiftM+1) + "月 確定シフト】");
 
+            for(var d=1; d<=days; d++){
+              var row = [];
+              row.push((shiftM+1) + "/" + d);
+              EMPLOYEES.forEach(function(e){
+                var s = (shifts[e.id] && shifts[e.id][d]) || "休み";
+                row.push(e.name + ":" + getSym(s));
+              });
+              lines.push(row.join(" / "));
+            }
+
+            var text = lines.join("\n");
+
+            navigator.clipboard.writeText(text).then(function(){
+              showToast("LINE共有用テキストをコピーしました ✓");
+            }).catch(function(){
+              showToast("コピーできませんでした");
+            });
+          }}
+          style={{
+            padding:"8px 16px",
+            borderRadius:8,
+            border:"none",
+            cursor:"pointer",
+            background:"#06C755",
+            color:"#fff",
+            fontFamily:"inherit",
+            fontSize:13,
+            fontWeight:700
+          }}
+        >
+          LINE共有用にコピー
+        </button>
+      </div>
+
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
+  <button
+    onClick={function(){
+      var lines = [];
+      lines.push("【" + shiftY + "年" + (shiftM+1) + "月 確定シフト】");
+
+      for(var d=1; d<=days; d++){
+        var row = [];
+        row.push((shiftM+1) + "/" + d);
+        EMPLOYEES.forEach(function(e){
+          var s = (shifts[e.id] && shifts[e.id][d]) || "休み";
+          row.push(e.name + ":" + getSym(s));
+        });
+        lines.push(row.join(" / "));
+      }
+
+      var text = lines.join("\n");
+
+      navigator.clipboard.writeText(text).then(function(){
+        showToast("LINE共有用テキストをコピーしました ✓");
+      }).catch(function(){
+        showToast("コピーできませんでした");
+      });
+    }}
+    style={{
+      padding:"8px 16px",
+      borderRadius:8,
+      border:"none",
+      cursor:"pointer",
+      background:"#06C755",
+      color:"#fff",
+      fontFamily:"inherit",
+      fontSize:13,
+      fontWeight:700
+    }}
+  >
+    LINE共有用にコピー
+  </button>
+</div>
+      
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
           <thead>
             <tr>
               <th style={{border:"1px solid "+C.border,padding:"6px",background:C.panel}}>日</th>
               {EMPLOYEES.map(function(e){
-                return (
-                  <th key={e.id} style={{border:"1px solid "+C.border,padding:"6px",background:C.panel}}>
-                    {e.name}
-                  </th>
-                );
-              })}
+  var isMe = e.id===selEmp;
+  return (
+    <th
+      key={e.id}
+      style={{
+        border:"1px solid "+C.border,
+        padding:"6px",
+        background:isMe ? C.accent+"22" : C.panel,
+        color:isMe ? C.accent : C.text,
+        fontWeight:isMe ? 800 : 700
+      }}
+    >
+      {e.name}
+    </th>
+  );
+})}
             </tr>
           </thead>
           <tbody>
@@ -1143,14 +1233,24 @@ function ViewShiftTab() {
               return (
                 <tr key={d}>
                   <td style={{border:"1px solid "+C.border,padding:"6px",textAlign:"center"}}>{d}</td>
-                  {EMPLOYEES.map(function(e){
-                    var s = (shifts[e.id] && shifts[e.id][d]) || "休み";
-return (
-  <td key={e.id+"-"+d} style={{border:"1px solid "+C.border,padding:"6px",textAlign:"center"}}>
-    {getSym(s)}
-  </td>
-);
-                  })}
+                {EMPLOYEES.map(function(e){
+  var s = (shifts[e.id] && shifts[e.id][d]) || "休み";
+  var isMe = e.id===selEmp;
+  return (
+    <td
+      key={e.id+"-"+d}
+      style={{
+        border:"1px solid "+C.border,
+        padding:"6px",
+        textAlign:"center",
+        background:isMe ? C.accent+"12" : "transparent",
+        fontWeight:isMe ? 800 : 400
+      }}
+    >
+      {getSym(s)}
+    </td>
+  );
+})}
                 </tr>
               );
             })}
